@@ -24,26 +24,26 @@ type Post struct {
 }
 
 type PostFull struct {
-	Author User   `json:"user"`
-	Forum  Forum  `json:"forum"`
-	Post   Post   `json:"post"`
-	Thread Thread `json:"thread"`
+	Author *User   `json:"user"`
+	Forum  *Forum  `json:"forum"`
+	Post   *Post   `json:"post"`
+	Thread *Thread `json:"thread"`
 }
 
 type PostUpdate struct {
 	Message string `json:"message"`
 }
 
-type Posts struct {
-	Author   string `json:"author"`
-	Created  string `json:"created"`
-	Forum    string `json:"forum"`
-	Id       int64  `json:"id"`
-	IsEdited bool   `json:"isEdited"`
-	Message  string `json:"message"`
-	Parent   int64  `json:"parent"`
-	Thread   int32  `json:"thread"`
-}
+// type Posts struct {
+// 	Author   string `json:"author"`
+// 	Created  string `json:"created"`
+// 	Forum    string `json:"forum"`
+// 	Id       int64  `json:"id"`
+// 	IsEdited bool   `json:"isEdited"`
+// 	Message  string `json:"message"`
+// 	Parent   int64  `json:"parent"`
+// 	Thread   int32  `json:"thread"`
+// }
 
 type Status struct {
 	Forum  int32 `json:"forum"`

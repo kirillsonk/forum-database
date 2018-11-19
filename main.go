@@ -79,7 +79,7 @@ func router() {
 	http.ListenAndServe(":5000", nil)
 }
 
-func createForum(w http.ResponseWriter, r *http.Request) { //POST
+func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
@@ -142,7 +142,7 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST
+func createThread(w http.ResponseWriter, r *http.Request) { //POST +
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
@@ -210,7 +210,7 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST
 	return
 }
 
-func forumDetails(w http.ResponseWriter, r *http.Request) { //GET
+func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
@@ -240,20 +240,20 @@ func forumDetails(w http.ResponseWriter, r *http.Request) { //GET
 	return
 }
 
-func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (Sort)
+func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (Sort) -
 	if r.Method == http.MethodGet {
 		return
 	}
 	return
 }
 
-func forumUsers(w http.ResponseWriter, r *http.Request) { //GET (Sort)
+func forumUsers(w http.ResponseWriter, r *http.Request) { //GET (Sort) -
 	if r.Method == http.MethodGet {
 	}
 	return
 }
 
-func postDetails(w http.ResponseWriter, r *http.Request) { //GET
+func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
@@ -265,9 +265,7 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET
 		// var postFull models.PostFull
 		var post models.Post
 
-		getPostDataById := db.QueryRow("SELECT * FROM Posts WHERE id = $1;", ID)
-
-		err := getPostDataById.Scan(
+		err := db.QueryRow("SELECT * FROM Posts WHERE id = $1;", ID).Scan(
 			&post.Author,
 			&post.Created,
 			&post.Forum,
@@ -290,19 +288,22 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET
 			return
 		}
 
+		var postFull models.PostFull
+
 		for _, data := range relAdds {
 			if data == "user" {
-				var postAuthor models.User
+				var postUser models.User
 				row := db.QueryRow("SELECT * FROM User WHERE nickname = 1$;", post.Author)
 				err := row.Scan(
-					&postAuthor.About,
-					&postAuthor.Email,
-					&postAuthor.Fullname,
-					&postAuthor.Nickname)
+					&postUser.About,
+					&postUser.Email,
+					&postUser.Fullname,
+					&postUser.Nickname)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
+				postFull.Author = &postUser
 			}
 
 			if data == "thread" {
@@ -321,6 +322,7 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
+				postFull.Thread = &postThread
 			}
 			if data == "forum" {
 				var postForum models.Forum
@@ -335,23 +337,129 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
+				postFull.Forum = &postForum
 			}
 		}
 
-		resData, _ := json.Marshal(post)
+		resData, _ := json.Marshal(postFull)
 		w.WriteHeader(http.StatusOK)
 		w.Write(resData)
 		return
 	}
+
+	if r.Method == http.MethodPost {
+		w.Header().Set("content-type", "application/json")
+		reqBody, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer r.Body.Close()
+
+		args := mux.Vars(r)
+		ID := args["id"]
+
+		var updatePost models.Post
+		var oldPost models.Post
+		var currentPost models.Post
+
+		err = json.Unmarshal(reqBody, &updatePost)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		err = db.QueryRow("SELECT * FROM Posts WHERE id = &1 ", ID).Scan(
+			&oldPost.Id,
+			&oldPost.Parent,
+			&oldPost.Author,
+			&oldPost.Message,
+			&oldPost.IsEdited,
+			&oldPost.Forum,
+			&oldPost.Thread,
+			&oldPost.Created)
+		if err != nil {
+			if oldPost.Message != updatePost.Message && updatePost.Message != "" {
+				err = db.QueryRow("UPDATE Posts SET message = $1, isedited = true WHERE id = $2 RETURNING *",
+					currentPost.Author,
+					ID).Scan(
+					&currentPost.Id,
+					&currentPost.Author,
+					&currentPost.Message,
+					&currentPost.IsEdited,
+					&currentPost.Forum,
+					&currentPost.Thread,
+					&currentPost.Created)
+			} else {
+				currentPost = oldPost
+			}
+		}
+
+		if err != nil {
+			if err == sql.ErrNoRows {
+				var e models.Error
+				pAuth := string(currentPost.Author)
+				e.Message = "Can't find user with id = " + pAuth + "\n"
+				resData, _ := json.Marshal(e.Message)
+				w.WriteHeader(http.StatusNotFound)
+				w.Write(resData)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		//-----------------------
+		resData, _ := json.Marshal(currentPost)
+		w.WriteHeader(http.StatusOK)
+		w.Write(resData)
+		return
+	}
+}
+
+func serviceClear(w http.ResponseWriter, r *http.Request) { //POST +
+	if r.Method == http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		// w.Header()["Date"] = nil
+
+		// sqlQuery := `
+		// TRUNCATE TABLE post CASCADE;
+		// TRUNCATE TABLE forumUser CASCADE;
+		// TRUNCATE TABLE forum CASCADE;
+		// TRUNCATE TABLE thread CASCADE;
+		// TRUNCATE TABLE vote CASCADE;`
+
+		_, err := db.Query("TRUNCATE TABLE Users, Forums, Threads, Posts, Votes")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}
 	return
-}
-
-func serviceClear(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func serviceStatus(w http.ResponseWriter, r *http.Request) {
+func serviceStatus(w http.ResponseWriter, r *http.Request) { //GET +
+	if r.Method == http.MethodGet {
+		w.Header().Set("content-type", "application/json")
+		var status models.Status
 
+		err := db.QueryRow("SELECT COUNT(*) FROM Users").Scan(&status.User)
+		err = db.QueryRow("SELECT COUNT(*) FROM Forums").Scan(&status.Forum)
+		err = db.QueryRow("SELECT COUNT(*) FROM Threads").Scan(&status.Thread)
+		err = db.QueryRow("SELECT COUNT(*) FROM Posts").Scan(&status.Post)
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		resData, _ := json.Marshal(status)
+		w.WriteHeader(http.StatusOK)
+		w.Write(resData)
+	}
+	return
 }
 
 func threadCreate(w http.ResponseWriter, r *http.Request) {
