@@ -30,9 +30,9 @@ type PostFull struct {
 	Thread *Thread `json:"thread"`
 }
 
-type PostUpdate struct {
-	Message string `json:"message"`
-}
+// type PostUpdate struct {
+// 	Message string `json:"message"`
+// }
 
 // type Posts struct {
 // 	Author   string `json:"author"`
@@ -68,16 +68,16 @@ type ThreadUpdate struct {
 	Title   string `json:"title"`
 }
 
-type Threads struct {
-	Author  string `json:"author"`
-	Created string `json:"created"`
-	Forum   string `json:"forum"`
-	Id      int32  `json:"id"`
-	Message string `json:"message"`
-	Slug    string `json:"slug"`
-	Title   string `json:"title"`
-	Votes   string `json:"votes"`
-}
+// type Threads struct {
+// 	Author  string `json:"author"`
+// 	Created string `json:"created"`
+// 	Forum   string `json:"forum"`
+// 	Id      int32  `json:"id"`
+// 	Message string `json:"message"`
+// 	Slug    string `json:"slug"`
+// 	Title   string `json:"title"`
+// 	Votes   string `json:"votes"`
+// }
 
 type User struct {
 	About    string `json:"about"`
@@ -92,12 +92,12 @@ type UserUpdate struct {
 	Fullname string `json:"fullname"`
 }
 
-type Users struct {
-	About    string `json:"about"`
-	Email    string `json:"email"`
-	Fullname string `json:"fullname"`
-	Nickname string `json:"nickname"`
-}
+// type Users struct {
+// 	About    string `json:"about"`
+// 	Email    string `json:"email"`
+// 	Fullname string `json:"fullname"`
+// 	Nickname string `json:"nickname"`
+// }
 
 type Vote struct {
 	Nickname string `json:"nickname"`
