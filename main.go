@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	// "github.com/bozaro/tech-db-forum/generated/models"
+
 	models "./models"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
@@ -74,8 +76,8 @@ func router() {
 	router.HandleFunc("/api/thread/{slug_or_id}/details", threadDetails)
 	router.HandleFunc("/api/thread/{slug_or_id}/posts", threadPosts)
 	router.HandleFunc("/api/thread/{slug_or_id}/vote", threadVote)
-	router.HandleFunc("/api/user/{nickname}/create", userNicknameCreate)
-	router.HandleFunc("/api/user/{nickname}/profile", userNicknameProfile)
+	router.HandleFunc("/api/user/{nickname}/create", userCreate)
+	router.HandleFunc("/api/user/{nickname}/profile", userProfile)
 
 	http.Handle("/", router)
 	fmt.Println("Listen server on port: 5000")
@@ -701,14 +703,183 @@ func threadPosts(w http.ResponseWriter, r *http.Request) { //GET (Sort) -
 
 }
 
-func threadVote(w http.ResponseWriter, r *http.Request) {
+func threadVote(w http.ResponseWriter, r *http.Request) { //POST +
+	if r.Method == http.MethodPost {
+		w.Header().Set("content-type", "application/json")
 
+		reqBody, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer r.Body.Close()
+
+		args := mux.Vars(r)
+		slugOrID := args["slug_or_id"]
+
+		// var returningThread models.Thread
+		var newUserVote models.Vote
+		var oldUserVote models.Vote
+
+		returningThread, err := getThreadById(slugOrID)
+		if err != nil {
+			var e models.Error
+			e.Message = "Can't find user with slug " + slugOrID
+			resData, _ := json.Marshal(e)
+
+			w.WriteHeader(http.StatusNotFound)
+			w.Write(resData)
+			return
+		}
+
+		err = json.Unmarshal(reqBody, &newUserVote)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		threadSlugOrId, err := strconv.Atoi(slugOrID)
+		var adds string
+		if err != nil {
+			adds = "slug='" + slugOrID + "' "
+		} else {
+			adds = "id=" + strconv.Itoa(threadSlugOrId)
+		}
+
+		row := db.QueryRow("SELECT voice FROM Votes WHERE nickname=$1", oldUserVote.Nickname)
+		err = row.Scan(&oldUserVote.Voice)
+		if err != nil {
+			_, err = db.Exec("INSERT INTO Votes(nickname, voice) VALUES ($1,$2) ", &newUserVote.Nickname, newUserVote.Voice)
+			err = db.QueryRow("UPDATE Threads SET nickname = $1, votes = votes+$1 WHERE "+adds+" RETURNING *;",
+				&newUserVote.Nickname,
+				&newUserVote.Voice).Scan(
+				&returningThread.Author,
+				&returningThread.Created,
+				&returningThread.Forum,
+				&returningThread.Id,
+				&returningThread.Message,
+				&returningThread.Slug,
+				&returningThread.Title,
+				&returningThread.Votes)
+
+			resData, _ := json.Marshal(returningThread)
+			w.WriteHeader(http.StatusOK)
+			w.Write(resData)
+			return
+
+		} else {
+			row.Scan(&oldUserVote.Voice)
+			if oldUserVote.Voice != newUserVote.Voice {
+				if oldUserVote.Voice == -1 {
+					_, err = db.Exec("UPDATE Threads SET votes=votes-2 WHERE " + adds + ";")
+				} else {
+					_, err = db.Exec("UPDATE threads SET votes=votes+2 WHERE " + adds + ";")
+				}
+			}
+
+			err := db.QueryRow("SELECT * FROM Threads WHERE "+adds+";").
+				Scan(&returningThread.Author,
+					&returningThread.Created,
+					&returningThread.Forum,
+					&returningThread.Id,
+					&returningThread.Message,
+					&returningThread.Slug,
+					&returningThread.Title,
+					&returningThread.Votes)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					var e models.Error
+					e.Message = "Can't find thread author by slug or id" + slugOrID
+					resData, _ := json.Marshal(e.Message)
+					w.WriteHeader(http.StatusNotFound)
+					w.Write(resData)
+					return
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			resData, _ := json.Marshal(returningThread)
+			w.WriteHeader(http.StatusOK)
+			w.Write(resData)
+			return
+		}
+	}
+	return
 }
 
-func userNicknameCreate(w http.ResponseWriter, r *http.Request) {
+func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
+	if r.Method == http.MethodPost {
+		w.Header().Set("content-type", "application/json")
+		reqBody, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
+		defer r.Body.Close()
+
+		var user models.User
+		var newUser models.User
+
+		err = json.Unmarshal(reqBody, &newUser)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		args := mux.Vars(r)
+		nickname := args["nickname"]
+		user.Nickname = nickname
+
+		err = db.QueryRow("INSERT INTO Users (about, email, fullname, nickname) VALUES ($1 , $2, $3, $4) RETURNING *",
+			&user.About,
+			&user.Email,
+			&user.Fullname,
+			&user.Nickname).
+			Scan(
+				&newUser.About,
+				&newUser.Email,
+				&newUser.Fullname,
+				&newUser.Nickname)
+			// if err.Error() == "pq: duplicate key value violates unique constraint \"Users_nickname_key\"" {
+		if err != nil {
+
+			var existUser []models.User
+
+			row, err := db.Query("SELECT * FROM Users WHERE nickname=$1 OR email=$2")
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			for row.Next() {
+				var rowUser models.User
+				err := row.Scan(&rowUser.About, &rowUser.Email, &rowUser.Fullname, &rowUser.Nickname)
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				existUser = append(existUser, rowUser)
+			}
+
+			resData, _ := json.Marshal(existUser)
+			w.WriteHeader(http.StatusConflict)
+			w.Write(resData)
+			return
+		}
+
+		resData, _ := json.Marshal(newUser)
+		w.WriteHeader(http.StatusCreated)
+		w.Write(resData)
+		return
+	}
+	return
 }
 
-func userNicknameProfile(w http.ResponseWriter, r *http.Request) {
-
+func userProfile(w http.ResponseWriter, r *http.Request) { //GET - //POST -
+	if r.Method == http.MethodPost {
+	}
+	if r.Method == http.MethodGet {
+	}
+	return
 }
