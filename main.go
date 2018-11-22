@@ -91,6 +91,7 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 
 		var forum models.Forum
 		var newForum models.Forum
+		var oldForum models.Forum
 
 		err = json.Unmarshal(reqBody, &forum)
 		if err != nil {
@@ -102,8 +103,8 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 		if err != nil {
 			if err == sql.ErrNoRows {
 				var e models.Error
-				e.Message = "Can't find user with nickname " + forum.User
-				resData, _ := json.Marshal(e.Message)
+				e.Message = "Can't find user with nickname: " + forum.User + "\n"
+				resData, _ := json.Marshal(e)
 				w.WriteHeader(http.StatusNotFound)
 				w.Write(resData)
 				return
@@ -126,9 +127,15 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 		// fmt.Println("----------------------")
 
 		if err != nil {
-			// fmt.Println(err.Error())
-			// fmt.Println("----------------------")
-			resData, _ := json.Marshal(newForum)
+			err = db.QueryRow("SELECT slug, title, author FROM Forums WHERE author=$1", forum.User).
+				Scan(&oldForum.Slug,
+					&oldForum.Title,
+					&oldForum.User)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			resData, _ := json.Marshal(oldForum)
 			w.WriteHeader(http.StatusConflict)
 			w.Write(resData)
 			return
@@ -169,7 +176,7 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +
 			&thread.Message,
 			&thread.Title,
 			Slug)
-		if err.Error() == "pq: duplicate key value violates unique constraint \"threads_title_key\"" {
+		if err != nil {
 			row := db.QueryRow("SELECT * FROM forums WHERE title=$1", thread.Title)
 			row.Scan(&thread.Author,
 				&thread.Created,
@@ -211,23 +218,31 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +
+func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероятно, неправильно написан)
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
 		args := mux.Vars(r)
 		Slug := args["slug"]
 
-		getDataBySlug := db.QueryRow("SELECT * FROM Forums WHERE slug = $1;", Slug)
-
 		var forum models.Forum
 
-		err := getDataBySlug.Scan(&forum.Posts,
-			Slug,
-			&forum.Threads,
-			&forum.Title,
-			&forum.User)
+		// fmt.Println(Slug)
+		// fmt.Println("------------------")
+
+		err := db.QueryRow("SELECT slug, title, author FROM Forums WHERE slug = $1;", Slug).
+			// err := db.QueryRow("SELECT * FROM Forums WHERE slug = $1;", Slug).
+			Scan(
+				// &forum.Posts,
+				&forum.Slug,
+				// &forum.Threads,
+				&forum.Title,
+				&forum.User)
+
+		// fmt.Println(forum)
+		// fmt.Println("------------------")
 		if err != nil {
+			fmt.Println(err.Error())
 			var e models.Error
 			e.Message = "Can't find user with slug " + Slug
 			resData, _ := json.Marshal(e)
