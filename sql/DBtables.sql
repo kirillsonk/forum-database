@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS Forums		-- Done (+/-)
 	slug citext UNIQUE NOT NULL,
 	threads int,
 	title citext,
-	author citext NOT NULL REFERENCES Users(nickname)
+	author citext PRIMARY KEY REFERENCES Users(nickname)
 );
 
 CREATE TABLE IF NOT EXISTS Threads		-- Done

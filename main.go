@@ -83,13 +83,14 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
+		defer r.Body.Close()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		defer r.Body.Close()
 
 		var forum models.Forum
+		var newForum models.Forum
 
 		err = json.Unmarshal(reqBody, &forum)
 		if err != nil {
@@ -97,48 +98,46 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 			return
 		}
 
-		_, err = db.Exec("INSERT INTO Forums (slug, title, author) VALUES ($1 , $2, $3)",
-			&forum.Slug,
-			&forum.Title,
-			&forum.User)
-		if err != nil {
-			if err.Error() == "pq: duplicate key value violates unique constraint \"Forums_author_key\"" {
-				row := db.QueryRow("SELECT * FROM forums WHERE author=$1", forum.User)
-				row.Scan(&forum.Posts,
-					&forum.Slug,
-					&forum.Threads,
-					&forum.Title,
-					&forum.User)
-
-				resData, _ := json.Marshal(forum)
-				w.WriteHeader(http.StatusConflict)
-				w.Write(resData)
-				return
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		err = db.QueryRow("SELECT * FROM Forums WHERE \"author\" = $1;", forum).Scan(&forum.User)
+		err = db.QueryRow("SELECT nickname FROM Users WHERE nickname=$1", forum.User).Scan(&forum.User)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				var e models.Error
-				e.Message = "Can't find user with id " + forum.User
+				e.Message = "Can't find user with nickname " + forum.User
 				resData, _ := json.Marshal(e.Message)
 				w.WriteHeader(http.StatusNotFound)
 				w.Write(resData)
 				return
 			}
-			w.WriteHeader(http.StatusInternalServerError)
-			return
 		}
 
-		resData, _ := json.Marshal(forum)
+		err = db.QueryRow("INSERT INTO Forums (slug, title, author) VALUES ($1, $2, $3) RETURNING slug, title, author;",
+			forum.Slug,
+			forum.Title,
+			forum.User).Scan(
+			// &newForum.Posts,
+			&newForum.Slug,
+			// &newForum.Threads,
+			&newForum.Title,
+			&newForum.User)
+
+		// fmt.Println(forum)
+		// fmt.Println("----------------------")
+		// fmt.Println(newForum)
+		// fmt.Println("----------------------")
+
+		if err != nil {
+			// fmt.Println(err.Error())
+			// fmt.Println("----------------------")
+			resData, _ := json.Marshal(newForum)
+			w.WriteHeader(http.StatusConflict)
+			w.Write(resData)
+			return
+		}
+		resData, _ := json.Marshal(newForum)
 		w.WriteHeader(http.StatusCreated)
 		w.Write(resData)
 		return
 	}
-
 	return
 }
 
@@ -979,10 +978,6 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
-		// err = db.Ping()
-
-		//fmt.Println(err.Error)
-
 		defer r.Body.Close()
 
 		if err != nil {
@@ -990,7 +985,8 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 			return
 		}
 
-		user := new(models.User)
+		// user := new(models.User)
+		var user models.User
 		// var user models.User
 		var newUser models.User
 
@@ -1054,14 +1050,15 @@ func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
+		defer r.Body.Close()
+
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		defer r.Body.Close()
-
-		var user models.User
+		var oldUser models.User
+		var newUser models.User
 		var userUpdate models.UserUpdate
 
 		err = json.Unmarshal(reqBody, &userUpdate)
@@ -1070,20 +1067,20 @@ func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 			return
 		}
 
+		// fmt.Println(userUpdate)
+		// fmt.Println("-----------------------")
+
 		args := mux.Vars(r)
 		nickname := args["nickname"]
-		// user.Nickname = nickname
-		err = db.QueryRow("UPDATE Users SET (about, email, fullname) VALUES ($1 , $2, $3) WHERE nickname=$4 RETURNING *",
-			userUpdate.About,
-			userUpdate.Email,
-			userUpdate.Fullname,
-			nickname).
+		// userUpdate.Nickname = nickname
+		err = db.QueryRow("SELECT * FROM users WHERE nickname=$1", nickname).
 			Scan(
-				&user.About,
-				&user.Email,
-				&user.Fullname,
-				&user.Nickname)
-		if err != nil { //404 +
+				&oldUser.About,
+				&oldUser.Email,
+				&oldUser.Fullname,
+				&oldUser.Nickname)
+
+		if err != nil {
 			if err == sql.ErrNoRows {
 				var e models.Error
 				e.Message = "Can't find user with nickname " + nickname
@@ -1094,20 +1091,47 @@ func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 				return
 			}
 		}
-		//409 +
-		// 	var e models.Error
-		// 	e.Message = "Can't find user with nickname " + nickname
-		// 	resData, _ := json.Marshal(e)
 
-		// 	w.WriteHeader(http.StatusConflict)
-		// 	w.Write(resData)
-		// 	return
+		if userUpdate.Email == "" {
+			userUpdate.Email = oldUser.Email
+		}
+		if userUpdate.Fullname == "" {
+			userUpdate.Fullname = oldUser.Fullname
+		}
+		if userUpdate.About == "" {
+			userUpdate.About = oldUser.About
+		}
 
-		resData, _ := json.Marshal(user)
+		err = db.QueryRow("UPDATE Users SET about=$1, email=$2, fullname=$3 WHERE nickname=$4 RETURNING *;",
+			userUpdate.About,
+			userUpdate.Email,
+			userUpdate.Fullname,
+			nickname).Scan(
+			&newUser.About,
+			&newUser.Email,
+			&newUser.Fullname,
+			&newUser.Nickname)
+
+		// fmt.Println("-----------------------")
+		// fmt.Println(newUser)
+		// fmt.Println("-----------------------")
+
+		if err != nil {
+			var e models.Error
+			e.Message = "Can't change prifile with id " + nickname
+			resData, _ := json.Marshal(e)
+
+			w.WriteHeader(http.StatusConflict)
+			w.Write(resData)
+			return
+		}
+
+		resData, _ := json.Marshal(newUser)
 		w.WriteHeader(http.StatusOK)
 		w.Write(resData)
 		return
 	}
+
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
