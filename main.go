@@ -48,49 +48,13 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-
 	fmt.Println("Successfully connected!")
 }
 
 func main() {
 	router()
-
-	//defer db.Close()
+	defer db.Close()
 }
-
-// func init() {
-// 	const (
-// 		host     = "localhost"
-// 		user     = "ksonk"
-// 		password = "k123"
-// 		dbname   = "forumdb"
-// 	)
-// 	var err error
-// 	psqlInfo := fmt.Sprintf("host=%s user=%s "+
-// 		"password=%s dbname=%s sslmode=disable",
-// 		host, user, password, dbname)
-
-// 	db, err = sql.Open("postgres", psqlInfo)
-
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	err = db.Ping()
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		panic(err)
-// 	}
-
-// 	initDB, err := ioutil.ReadFile("./sql/DBtables.sql")
-// 	_, err = db.Exec(string(initDB))
-
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	fmt.Println("Successfully connected!")
-// }
 
 func router() {
 	router := mux.NewRouter()
@@ -1026,8 +990,8 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 			return
 		}
 
-		// user := new(models.User)
-		var user models.User
+		user := new(models.User)
+		// var user models.User
 		var newUser models.User
 
 		err = json.Unmarshal(reqBody, &newUser)
@@ -1052,7 +1016,7 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 				&user.Nickname)
 
 		if err != nil {
-			fmt.Println(err.Error)
+			// fmt.Println(err.Error)
 
 			var existUser []models.User
 
@@ -1108,12 +1072,11 @@ func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 
 		args := mux.Vars(r)
 		nickname := args["nickname"]
-		user.Nickname = nickname
-		// UPDATE Posts SET message = $1, isedited = true WHERE id = $2 RETURNING *;
+		// user.Nickname = nickname
 		err = db.QueryRow("UPDATE Users SET (about, email, fullname) VALUES ($1 , $2, $3) WHERE nickname=$4 RETURNING *",
-			&userUpdate.About,
-			&userUpdate.Email,
-			&userUpdate.Fullname,
+			userUpdate.About,
+			userUpdate.Email,
+			userUpdate.Fullname,
 			nickname).
 			Scan(
 				&user.About,
@@ -1129,16 +1092,16 @@ func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 				w.WriteHeader(http.StatusNotFound)
 				w.Write(resData)
 				return
-			} else { //409 +
-				var e models.Error
-				e.Message = "Can't find user with nickname " + nickname
-				resData, _ := json.Marshal(e)
-
-				w.WriteHeader(http.StatusConflict)
-				w.Write(resData)
-				return
 			}
 		}
+		//409 +
+		// 	var e models.Error
+		// 	e.Message = "Can't find user with nickname " + nickname
+		// 	resData, _ := json.Marshal(e)
+
+		// 	w.WriteHeader(http.StatusConflict)
+		// 	w.Write(resData)
+		// 	return
 
 		resData, _ := json.Marshal(user)
 		w.WriteHeader(http.StatusOK)
