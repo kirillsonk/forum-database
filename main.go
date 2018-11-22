@@ -1026,7 +1026,8 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 			return
 		}
 
-		user := new(models.User)
+		// user := new(models.User)
+		var user models.User
 		var newUser models.User
 
 		err = json.Unmarshal(reqBody, &newUser)
@@ -1038,11 +1039,8 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 		args := mux.Vars(r)
 		nickname := args["nickname"]
 		newUser.Nickname = nickname
-		fmt.Println(newUser.About)
-		fmt.Println(newUser.Email)
-		fmt.Println(newUser.Fullname)
-		fmt.Println(newUser.Nickname)
-		err = db.QueryRow("INSERT INTO Users (about, email, fullname, nickname) VALUES ($1 , $2, $3, $4) RETURNING *",
+
+		err = db.QueryRow("INSERT INTO Users (about, email, fullname, nickname) VALUES ($1, $2, $3, $4) RETURNING *",
 			newUser.About,
 			newUser.Email,
 			newUser.Fullname,
@@ -1052,13 +1050,13 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 				&user.Email,
 				&user.Fullname,
 				&user.Nickname)
-			// if err.Error() == "pq: duplicate key value violates unique constraint \"Users_nickname_key\"" {
+
 		if err != nil {
 			fmt.Println(err.Error)
 
 			var existUser []models.User
 
-			row, err := db.Query("SELECT * FROM Users WHERE nickname=$1 OR email=$2")
+			row, err := db.Query("SELECT * FROM Users WHERE nickname=$1 OR email=$2", newUser.Nickname, newUser.Email)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
@@ -1088,7 +1086,7 @@ func userCreate(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST + !!!(вероятно, неправильно)
+func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
