@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS Threads		-- Done
 	author citext NOT NULL REFERENCES Users(nickname),
 	created TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 	forum citext REFERENCES Forums(slug),
+	-- forum citext,
 	id SERIAL PRIMARY KEY,
 	message citext,
 	slug citext UNIQUE,

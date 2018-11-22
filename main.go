@@ -148,7 +148,7 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST +
+func createThread(w http.ResponseWriter, r *http.Request) { //POST + (исправлять)
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
@@ -160,6 +160,7 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +
 		defer r.Body.Close()
 
 		var thread models.Thread
+		var newThread models.Thread
 
 		err = json.Unmarshal(reqBody, &thread)
 		if err != nil {
@@ -169,48 +170,58 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +
 
 		args := mux.Vars(r)
 		Slug := args["slug"]
+		thread.Slug = Slug
 
-		_, err = db.Exec("INSERT INTO Threads (author, created, message, title, slug) VALUES ($1 , $2, $3, $4, $5)",
-			&thread.Author,
-			&thread.Created,
-			&thread.Message,
-			&thread.Title,
-			Slug)
-		if err != nil {
-			row := db.QueryRow("SELECT * FROM forums WHERE title=$1", thread.Title)
-			row.Scan(&thread.Author,
-				&thread.Created,
-				&thread.Forum,
-				&thread.Id,
-				&thread.Message,
-				&thread.Slug,
-				&thread.Title,
-				&thread.Votes,
-			)
+		err = db.QueryRow("INSERT INTO Threads (author, created, message, title, slug) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+			thread.Author,
+			thread.Created,
+			thread.Message,
+			thread.Title,
+			thread.Slug).
+			Scan(&newThread.Author,
+				&newThread.Created,
+				&newThread.Forum,
+				&newThread.Id,
+				&newThread.Message,
+				&newThread.Slug,
+				&newThread.Title,
+				&newThread.Votes)
 
-			resData, _ := json.Marshal(thread)
-			w.WriteHeader(http.StatusConflict)
-			w.Write(resData)
-			return
-		}
+		// if err != nil { //404
+		// 	fmt.Println(err.Error())
+		// 	if err == sql.ErrNoRows {
+		// 		var e models.Error
+		// 		e.Message = "Can't find user with id " + thread.Author
+		// 		resData, _ := json.Marshal(e)
+		// 		w.WriteHeader(http.StatusNotFound)
+		// 		w.Write(resData)
+		// 		return
+		// 	}
+		// 	fmt.Println(" ----------------------------------------")
 
-		err = db.QueryRow("SELECT * FROM Threads WHERE \"author\" = $1 OR \"forum\" = $2;", thread).Scan(
-			&thread.Author,
-			&thread.Forum)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				var e models.Error
-				e.Message = "Can't find user with id " + thread.Author
-				resData, _ := json.Marshal(e.Message)
-				w.WriteHeader(http.StatusNotFound)
-				w.Write(resData)
-				return
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		// 	//409
+		// 	err = db.QueryRow("SELECT * FROM Threads WHERE title=$1 OR slug=$2", thread.Title, thread.Forum).
+		// 		Scan(&thread.Author,
+		// 			&thread.Created,
+		// 			&thread.Forum,
+		// 			&thread.Id,
+		// 			&thread.Message,
+		// 			&thread.Slug,
+		// 			&thread.Title,
+		// 			&thread.Votes,
+		// 		)
+		// 	if err != nil {
+		// 		w.WriteHeader(http.StatusInternalServerError)
+		// 		return
 
-		resData, _ := json.Marshal(thread)
+		// 	}
+		// 	resData, _ := json.Marshal(thread)
+		// 	w.WriteHeader(http.StatusConflict)
+		// 	w.Write(resData)
+		// 	return
+		// }
+
+		resData, _ := json.Marshal(newThread)
 		w.WriteHeader(http.StatusCreated)
 		w.Write(resData)
 		return
