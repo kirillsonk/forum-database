@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 type Error struct {
 	Message string `json:"message"`
 }
@@ -53,14 +55,14 @@ type Status struct {
 }
 
 type Thread struct {
-	Author  string `json:"author"`
-	Created string `json:"created"`
-	Forum   string `json:"forum"`
-	Id      int32  `json:"id"`
-	Message string `json:"message"`
-	Slug    string `json:"slug"`
-	Title   string `json:"title"`
-	Votes   string `json:"votes"`
+	Author  string    `json:"author"`
+	Created time.Time `json:"created"`
+	Forum   string    `json:"forum"`
+	Id      int32     `json:"id"`
+	Message string    `json:"message"`
+	Slug    string    `json:"slug"`
+	Title   string    `json:"title"`
+	Votes   int       `json:"votes"`
 }
 
 type ThreadUpdate struct {

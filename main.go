@@ -148,9 +148,10 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST + (исправлять)
+func createThread(w http.ResponseWriter, r *http.Request) { //POST + (вроде норм)
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
+		w.Header()["Date"] = nil
 		reqBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -170,55 +171,87 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST + (испра
 
 		args := mux.Vars(r)
 		Slug := args["slug"]
-		thread.Slug = Slug
+		// thread.Slug = Slug
+		var threadSlugSQL sql.NullString
+		// var threadForumSQL sql.NullString
 
-		err = db.QueryRow("INSERT INTO Threads (author, created, message, title, slug) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-			thread.Author,
-			thread.Created,
-			thread.Message,
-			thread.Title,
-			thread.Slug).
-			Scan(&newThread.Author,
-				&newThread.Created,
-				&newThread.Forum,
-				&newThread.Id,
-				&newThread.Message,
-				&newThread.Slug,
-				&newThread.Title,
-				&newThread.Votes)
+		if thread.Slug == "" {
+			err = db.QueryRow("INSERT INTO Threads (author, created, forum, message, title) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+				thread.Author,
+				thread.Created,
+				Slug,
+				thread.Message,
+				thread.Title).
+				Scan(&newThread.Author,
+					&newThread.Created,
+					&newThread.Forum,
+					&newThread.Id,
+					&newThread.Message,
+					&threadSlugSQL,
+					&newThread.Title,
+					&newThread.Votes)
+		} else {
+			err = db.QueryRow("INSERT INTO Threads (author, created, forum, message, slug, title) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+				thread.Author,
+				thread.Created,
+				Slug,
+				thread.Message,
+				thread.Slug,
+				thread.Title).
+				Scan(&newThread.Author,
+					&newThread.Created,
+					&newThread.Forum,
+					&newThread.Id,
+					&newThread.Message,
+					&newThread.Slug,
+					&newThread.Title,
+					&newThread.Votes)
+		}
 
-		// if err != nil { //404
-		// 	fmt.Println(err.Error())
-		// 	if err == sql.ErrNoRows {
-		// 		var e models.Error
-		// 		e.Message = "Can't find user with id " + thread.Author
-		// 		resData, _ := json.Marshal(e)
-		// 		w.WriteHeader(http.StatusNotFound)
-		// 		w.Write(resData)
-		// 		return
-		// 	}
-		// 	fmt.Println(" ----------------------------------------")
+		if err != nil { //404
+			fmt.Println(err.Error())
+			if err == sql.ErrNoRows {
+				var e models.Error
+				e.Message = "Can't find user with id " + thread.Author
+				resData, _ := json.Marshal(e)
+				w.WriteHeader(http.StatusNotFound)
+				w.Write(resData)
+				return
+			}
+			// fmt.Println(" ----------------------------------------")
 
-		// 	//409
-		// 	err = db.QueryRow("SELECT * FROM Threads WHERE title=$1 OR slug=$2", thread.Title, thread.Forum).
-		// 		Scan(&thread.Author,
-		// 			&thread.Created,
-		// 			&thread.Forum,
-		// 			&thread.Id,
-		// 			&thread.Message,
-		// 			&thread.Slug,
-		// 			&thread.Title,
-		// 			&thread.Votes,
-		// 		)
-		// 	if err != nil {
-		// 		w.WriteHeader(http.StatusInternalServerError)
-		// 		return
+			//409
+			err = db.QueryRow("SELECT * FROM Threads WHERE title=$1 OR slug=$2", thread.Title, thread.Forum).
+				Scan(&thread.Author,
+					&thread.Created,
+					&thread.Forum,
+					&thread.Id,
+					&thread.Message,
+					&thread.Slug,
+					&thread.Title,
+					&thread.Votes,
+				)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
 
-		// 	}
-		// 	resData, _ := json.Marshal(thread)
-		// 	w.WriteHeader(http.StatusConflict)
-		// 	w.Write(resData)
-		// 	return
+			}
+			resData, _ := json.Marshal(thread)
+			w.WriteHeader(http.StatusConflict)
+			w.Write(resData)
+			return
+		}
+
+		// if !threadSlugSQL.Valid {
+		// 	newThread.Slug = ""
+		// } else {
+		// 	newThread.Slug = threadSlugSQL.String
+		// }
+
+		// if !threadForumSQL.Valid {
+		// 	newThread.Forum = ""
+		// } else {
+		// 	newThread.Forum = threadForumSQL.String
 		// }
 
 		resData, _ := json.Marshal(newThread)
