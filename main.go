@@ -233,13 +233,12 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +++
 				w.Write(resData)
 				return
 			}
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
-		//сделать нижний/верхний регистр в forum ?? чооооо??
-		//идиотзим
 
-		var forumSlug string
-		db.QueryRow("SELECT slug FROM Forums WHERE slug=$1", thread.Forum).Scan(&forumSlug) // Неэффективно
-		newThread.Forum = forumSlug
+		//Берем из форумов, чтобы регистр соответсвовал
+		db.QueryRow("SELECT slug FROM Forums WHERE slug=$1", thread.Forum).Scan(&newThread.Forum)
 
 		resData, _ := json.Marshal(newThread)
 		w.WriteHeader(http.StatusCreated)
