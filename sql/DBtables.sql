@@ -14,9 +14,9 @@ CREATE TABLE IF NOT EXISTS Users		-- Done(+/-)
 
 CREATE TABLE IF NOT EXISTS Forums		-- Done (+/-)
 (
-	posts bigint,
+	posts bigint DEFAULT 0,
 	slug citext UNIQUE NOT NULL,
-	threads int,
+	threads int DEFAULT 0,
 	title citext,
 	author citext PRIMARY KEY REFERENCES Users(nickname)
 );
@@ -26,9 +26,7 @@ CREATE TABLE IF NOT EXISTS Threads		-- Done
 	author citext NOT NULL REFERENCES Users(nickname),
 	created TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 	forum citext REFERENCES Forums(slug),
-	-- forum citext,
 	id bigserial PRIMARY KEY,
-	-- ID SERIAL CONSTRAINT,
 	message citext,
 	slug citext UNIQUE,
 	title citext UNIQUE NOT NULL,

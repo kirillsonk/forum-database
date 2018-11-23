@@ -148,7 +148,7 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST + (вроде норм)
+func createThread(w http.ResponseWriter, r *http.Request) { //POST +++
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		w.Header()["Date"] = nil
@@ -171,12 +171,9 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST + (вроде
 
 		args := mux.Vars(r)
 		Slug := args["slug"]
-		// thread.Slug = Slug
-		var threadSlugSQL sql.NullString
-		// var threadForumSQL sql.NullString
 
 		if thread.Slug == "" {
-			err = db.QueryRow("INSERT INTO Threads (author, created, forum, message, title) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+			err = db.QueryRow("INSERT INTO Threads (author, created, forum, message, title) VALUES ($1, $2, $3, $4, $5) RETURNING author, created, forum, id, message, title, votes;",
 				thread.Author,
 				thread.Created,
 				Slug,
@@ -187,7 +184,6 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST + (вроде
 					&newThread.Forum,
 					&newThread.Id,
 					&newThread.Message,
-					&threadSlugSQL,
 					&newThread.Title,
 					&newThread.Votes)
 		} else {
@@ -209,50 +205,41 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST + (вроде
 		}
 
 		if err != nil { //404
-			fmt.Println(err.Error())
-			if err == sql.ErrNoRows {
+			// fmt.Println(err.Error())
+			if err.Error() == "pq: insert or update on table \"threads\" violates foreign key constraint \"threads_author_fkey\"" ||
+				err.Error() == "pq: insert or update on table \"threads\" violates foreign key constraint \"threads_forum_fkey\"" {
+				// if err == sql.ErrNoRows {
 				var e models.Error
 				e.Message = "Can't find user with id " + thread.Author
 				resData, _ := json.Marshal(e)
 				w.WriteHeader(http.StatusNotFound)
 				w.Write(resData)
 				return
+				// } else if err.Error() == "pq: insert or update on table \"threads\" violates foreign key constraint \"threads_forum_fkey\"" {
 			}
-			// fmt.Println(" ----------------------------------------")
-
-			//409
-			err = db.QueryRow("SELECT * FROM Threads WHERE title=$1 OR slug=$2", thread.Title, thread.Forum).
-				Scan(&thread.Author,
-					&thread.Created,
-					&thread.Forum,
-					&thread.Id,
-					&thread.Message,
-					&thread.Slug,
-					&thread.Title,
-					&thread.Votes,
-				)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+			if err.Error() == "pq: duplicate key value violates unique constraint \"threads_slug_key\"" {
+				// fmt.Println(err.Error())
+				err = db.QueryRow("SELECT * FROM Threads WHERE slug=$1", thread.Slug).
+					Scan(&newThread.Author,
+						&newThread.Created,
+						&newThread.Forum,
+						&newThread.Id,
+						&newThread.Message,
+						&newThread.Slug,
+						&newThread.Title,
+						&newThread.Votes)
+				resData, _ := json.Marshal(newThread)
+				w.WriteHeader(http.StatusConflict)
+				w.Write(resData)
 				return
-
 			}
-			resData, _ := json.Marshal(thread)
-			w.WriteHeader(http.StatusConflict)
-			w.Write(resData)
-			return
 		}
+		//сделать нижний/верхний регистр в forum ?? чооооо??
+		//идиотзим
 
-		// if !threadSlugSQL.Valid {
-		// 	newThread.Slug = ""
-		// } else {
-		// 	newThread.Slug = threadSlugSQL.String
-		// }
-
-		// if !threadForumSQL.Valid {
-		// 	newThread.Forum = ""
-		// } else {
-		// 	newThread.Forum = threadForumSQL.String
-		// }
+		var forumSlug string
+		db.QueryRow("SELECT slug FROM Forums WHERE slug=$1", thread.Forum).Scan(&forumSlug) // Неэффективно
+		newThread.Forum = forumSlug
 
 		resData, _ := json.Marshal(newThread)
 		w.WriteHeader(http.StatusCreated)
@@ -304,12 +291,14 @@ func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероя
 	return
 }
 
-func forumThreads(w http.ResponseWriter, r *http.Request) { //GET - (Sort) сложна оптимизировать
+func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) сложна оптимизировать
 	if r.Method == http.MethodGet {
 
 		limitVal := r.URL.Query().Get("limit")
 		sinceVal := r.URL.Query().Get("since")
 		descVal := r.URL.Query().Get("desc")
+
+		// var threadPostsSQL sql.NullString
 
 		var limit = false
 		var since = false
@@ -332,23 +321,23 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET - (Sort) сл�
 		var err error
 
 		if limit && !since && !desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 ORDER BY created LIMIT $2;", slug, limitVal)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 ORDER BY created LIMIT $2;", slug, limitVal)
 		} else if since && !limit && !desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 AND created <= $2 ORDER BY created;", slug, sinceVal)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 AND created <= $2 ORDER BY created;", slug, sinceVal)
 		} else if limit && since && !desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 AND created >= $2 ORDER BY created LIMIT $3;", slug, sinceVal, limitVal)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 AND created >= $2 ORDER BY created LIMIT $3;", slug, sinceVal, limitVal)
 		} else if limit && !since && desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 ORDER BY created DESC LIMIT $2;", slug, limitVal)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 ORDER BY created DESC LIMIT $2;", slug, limitVal)
 		} else if since && !limit && desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 AND created <= $2 ORDER BY created DESC;", slug, sinceVal)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 AND created <= $2 ORDER BY created DESC;", slug, sinceVal)
 		} else if limit && since && desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 AND created <= $2 ORDER BY created DESC LIMIT $3;", slug, sinceVal, limitVal)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 AND created <= $2 ORDER BY created DESC LIMIT $3;", slug, sinceVal, limitVal)
 		} else if limit && since && !desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 AND created >= $2 ORDER BY created LIMIT $3;", slug, sinceVal, limitVal)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 AND created >= $2 ORDER BY created LIMIT $3;", slug, sinceVal, limitVal)
 		} else if !limit && !since && !desc {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 ORDER BY created;", slug)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 ORDER BY created;", slug)
 		} else {
-			rows, err = db.Query("SELECT * FROM Threads WHERE Forum = $1 ORDER BY created;", slug)
+			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 ORDER BY created;", slug)
 		}
 
 		if err != nil {
@@ -356,22 +345,31 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET - (Sort) сл�
 			return
 		}
 
-		defer rows.Close()
-
-		thrs := make([]models.Thread, 0)
+		thrs := make([]*models.Thread, 0)
 
 		for rows.Next() {
-			// thr := Thread{}
-			var thr models.Thread
-			err := rows.Scan(&thr.Id, &thr.Author, &thr.Created, &thr.Forum, &thr.Message, &thr.Slug, &thr.Title, &thr.Votes)
+			// var thr *models.Thread
+			thr := new(models.Thread)
+			err := rows.Scan(&thr.Author,
+				&thr.Created,
+				&thr.Forum,
+				&thr.Id,
+				&thr.Message,
+				&thr.Slug,
+				&thr.Title,
+				&thr.Votes)
 			if err != nil {
+				//fmt.Println(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 			thrs = append(thrs, thr)
 		}
-		if getForum(slug) == nil {
-			// e := new(Error)
+		defer rows.Close()
+
+		_, err = getForum(slug)
+		if err != nil {
+			fmt.Println(err.Error())
 			var e models.Error
 			e.Message = "Can't find forum with slug " + slug + "\n"
 			resp, _ := json.Marshal(e)
@@ -383,12 +381,12 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET - (Sort) сл�
 		}
 
 		resp, _ := json.Marshal(thrs)
-		w.Header().Set("content-type", "application/json")
-
+		w.WriteHeader(http.StatusOK)
 		w.Write(resp)
 
 		return
 	}
+
 	return
 }
 
@@ -418,19 +416,19 @@ func forumUsers(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сде�
 		vars := mux.Vars(r)
 		slug := vars["slug"]
 
-		frm := getForum(slug)
+		// frm := getForum(slug)
 
-		if frm == nil {
-			// e := new(Error)
-			var e models.Error
-			e.Message = "Can't find forum with slug " + slug + "\n"
-			resp, _ := json.Marshal(e)
-			w.Header().Set("content-type", "application/json")
+		// if frm == nil {
+		// 	// e := new(Error)
+		// 	var e models.Error
+		// 	e.Message = "Can't find forum with slug " + slug + "\n"
+		// 	resp, _ := json.Marshal(e)
+		// 	w.Header().Set("content-type", "application/json")
 
-			w.WriteHeader(http.StatusNotFound)
-			w.Write(resp)
-			return
-		}
+		// 	w.WriteHeader(http.StatusNotFound)
+		// 	w.Write(resp)
+		// 	return
+		// }
 
 		if !limit && !since && !desc {
 			rows, err = db.Query("SELECT * FROM Users WHERE nickname IN (SELECT author FROM Threads WHERE forum=$1 GROUP BY author) OR nickname IN (SELECT author FROM Posts WHERE forum=$1 GROUP BY author) ORDER BY nickname ASC;", slug)
@@ -481,8 +479,6 @@ func forumUsers(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сде�
 		}
 
 		resp, _ := json.Marshal(users)
-		w.Header().Set("content-type", "application/json")
-
 		w.Write(resp)
 
 		return
@@ -741,14 +737,14 @@ func serviceStatus(w http.ResponseWriter, r *http.Request) { //GET +
 
 // 		for index, posts := range newPosts {
 
-// 			// if posts.Parent == 0 {
-// 			// 	err := db.QueryRow("INSERT INTO Posts(author, forum, message, parent, thread) VALUES ($1,$2,$3,$4,$5) RETURNING id, created",
-// 			// 		posts.Author,
-// 			// 		thr.Forum,
-// 			// 		posts.Message,
-// 			// 		posts.Parent,
-// 			// 		thr.Id).Scan(&id, &firstCreated)
-// 			// }
+// 			if posts.Parent == 0 {
+// 				err := db.QueryRow("INSERT INTO Posts(author, forum, message, parent, thread) VALUES ($1,$2,$3,$4,$5) RETURNING id, created",
+// 					posts.Author,
+// 					thr.Forum,
+// 					posts.Message,
+// 					posts.Parent,
+// 					thr.Id).Scan(&id, &firstCreated)
+// 			}
 // 		}
 
 // 	}
@@ -1251,14 +1247,14 @@ func getThreadById(slug string) (*models.Thread, error) {
 	return thread, nil
 }
 
-func getForum(slugOrId string) *models.Forum {
-	// forum := Forum{}
-	var forum models.Forum
-	err := db.QueryRow("SELECT * FROM forums WHERE slug=$1", slugOrId).Scan(&forum.Posts, &forum.Slug, &forum.Threads, &forum.Title, &forum.User)
+func getForum(slugOrId string) (*models.Forum, error) {
+	forum := new(models.Forum)
+	var err error
+	err = db.QueryRow("SELECT * FROM Forums WHERE slug=$1", slugOrId).Scan(&forum.Posts, &forum.Slug, &forum.Threads, &forum.Title, &forum.User)
 
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return &forum
+	return forum, nil
 }
