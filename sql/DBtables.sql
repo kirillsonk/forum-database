@@ -3,7 +3,7 @@ DROP TABLE IF EXISTS Forums, Posts, Votes, Users, Threads CASCADE;
 CREATE EXTENSION IF NOT EXISTS citext;
 
 
-CREATE TABLE IF NOT EXISTS Users		-- Done(+/-)
+CREATE TABLE IF NOT EXISTS Users		-- Done(+)
 (
 	about citext,
 	email citext UNIQUE NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS Users		-- Done(+/-)
 );
 
 
-CREATE TABLE IF NOT EXISTS Forums		-- Done (+/-)
+CREATE TABLE IF NOT EXISTS Forums		-- Done (+)
 (
 	posts bigint DEFAULT 0,
 	slug citext UNIQUE NOT NULL,
@@ -48,5 +48,7 @@ CREATE TABLE IF NOT EXISTS Posts		-- Done
 CREATE TABLE IF NOT EXISTS Votes 		-- Done
 (  
 	nickname citext PRIMARY KEY REFERENCES Users(nickname),
-	voice int UNIQUE NOT NULL
+	voice int UNIQUE,
+	thread int REFERENCES Threads(id),
+	UNIQUE (nickname, thread)
 );

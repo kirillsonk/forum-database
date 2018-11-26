@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	// "github.com/bozaro/tech-db-forum/generated/models"
 
@@ -67,7 +68,7 @@ func router() {
 	router.HandleFunc("/api/post/{id}/details", postDetails)
 	router.HandleFunc("/api/service/clear", serviceClear)
 	router.HandleFunc("/api/service/status", serviceStatus)
-	// router.HandleFunc("/api/thread/{slug_or_id}/create", postsCreate)
+	router.HandleFunc("/api/thread/{slug_or_id}/create", postsCreate)
 	router.HandleFunc("/api/thread/{slug_or_id}/details", threadDetails)
 	router.HandleFunc("/api/thread/{slug_or_id}/posts", threadPosts)
 	router.HandleFunc("/api/thread/{slug_or_id}/vote", threadVote)
@@ -148,7 +149,7 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST +++
+func createThread(w http.ResponseWriter, r *http.Request) { //POST +- (почему-то иногда ломается)
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		w.Header()["Date"] = nil
@@ -158,8 +159,6 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +++
 			return
 		}
 
-		defer r.Body.Close()
-
 		var thread models.Thread
 		var newThread models.Thread
 
@@ -168,6 +167,8 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +++
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+
+		defer r.Body.Close()
 
 		args := mux.Vars(r)
 		Slug := args["slug"]
@@ -233,8 +234,9 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +++
 				w.Write(resData)
 				return
 			}
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+			// fmt.Println(err.Error())
+			// w.WriteHeader(http.StatusInternalServerError)
+			// return
 		}
 
 		//Берем из форумов, чтобы регистр соответсвовал
@@ -272,7 +274,7 @@ func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероя
 		// fmt.Println(forum)
 		// fmt.Println("------------------")
 		if err != nil {
-			fmt.Println(err.Error())
+			// fmt.Println(err.Error())
 			var e models.Error
 			e.Message = "Can't find user with slug " + Slug
 			resData, _ := json.Marshal(e)
@@ -368,7 +370,7 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) �
 
 		_, err = getForum(slug)
 		if err != nil {
-			fmt.Println(err.Error())
+			// fmt.Println(err.Error())
 			var e models.Error
 			e.Message = "Can't find forum with slug " + slug + "\n"
 			resp, _ := json.Marshal(e)
@@ -696,59 +698,137 @@ func serviceStatus(w http.ResponseWriter, r *http.Request) { //GET +
 	return
 }
 
-// func postsCreate(w http.ResponseWriter, r *http.Request) { //POST !-
-// 	if r.Method == http.MethodPost {
-// 		w.Header().Set("content-type", "application/json")
+func postsCreate(w http.ResponseWriter, r *http.Request) { //POST !-
+	if r.Method == http.MethodPost {
+		w.Header().Set("content-type", "application/json")
 
-// 		reqBody, err := ioutil.ReadAll(r.Body)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			return
-// 		}
-// 		defer r.Body.Close()
+		reqBody, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		args := mux.Vars(r)
+		slugOrId := args["slug_or_id"]
 
-// 		args := mux.Vars(r)
-// 		slugOrId := args["slug_or_id"]
+		// var newPostsArr []models.Post
+		newPostsArr := make([]models.Post, 0)
+		var parentPost models.Post
+		currentTime := time.Now()
+		var postID int32
+		returningPostsArr := make([]models.Post, 0)
+		// var returningPostsArr []models.Post
 
-// 		// posts := make([]models.Post, 0)
-// 		var newPosts []models.Post
-// 		currentTime := time.Now()
+		err = json.Unmarshal(reqBody, &newPostsArr)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer r.Body.Close()
 
-// 		err = json.Unmarshal(reqBody, &newPosts)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			return
-// 		}
+		thread, err := getThreadById(slugOrId)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				var e models.Error
+				e.Message = "Can't find thread with id = " + slugOrId + "\n"
+				resData, _ := json.Marshal(e)
+				w.WriteHeader(http.StatusNotFound)
+				w.Write(resData)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
-// 		threadById, err := getThreadById(slugOrId)
-// 		if err != nil {
-// 			if err == sql.ErrNoRows {
-// 				var e models.Error
-// 				e.Message = "Can't find user with id = " + slugOrId + "\n"
-// 				resData, _ := json.Marshal(e.Message)
-// 				w.WriteHeader(http.StatusNotFound)
-// 				w.Write(resData)
-// 				return
-// 			}
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			return
-// 		}
+		for index, posts := range newPostsArr {
+			fmt.Println("abkdkdkdkkddkdkdkkdkdkd")
+			if posts.Parent == 0 {
+				err := db.QueryRow("SELECT id FROM Posts WHERE id=$1, AND thread=$2 AND forum=$3",
+					posts.Parent,
+					thread.Id,
+					thread.Forum).
+					Scan(&parentPost.Id)
+				if err != nil {
+					var e models.Error
+					e.Message = "Cant't find parent post with id=" + slugOrId
+					resData, _ := json.Marshal(e)
+					w.WriteHeader(http.StatusConflict)
+					w.Write(resData)
+					return
+				}
+			}
+			if index == 0 {
+				err := db.QueryRow("INSERT INTO Posts (author, forum, message, parent, thread) VALUES ($1,$2,$3,$4,$5) RETURNING id, created",
+					posts.Author,
+					thread.Forum,
+					posts.Message,
+					posts.Parent,
+					thread.Id).Scan(&postID, &currentTime)
+				if err != nil {
+					var e models.Error
+					e.Message = "Can't find parent post \n"
+					resp, _ := json.Marshal(e)
+					w.Header().Set("content-type", "application/json")
 
-// 		for index, posts := range newPosts {
+					w.WriteHeader(http.StatusNotFound)
 
-// 			if posts.Parent == 0 {
-// 				err := db.QueryRow("INSERT INTO Posts(author, forum, message, parent, thread) VALUES ($1,$2,$3,$4,$5) RETURNING id, created",
-// 					posts.Author,
-// 					thr.Forum,
-// 					posts.Message,
-// 					posts.Parent,
-// 					thr.Id).Scan(&id, &firstCreated)
-// 			}
-// 		}
+					w.Write(resp)
+					return
+				}
+			} else {
+				err := db.QueryRow("INSERT INTO Posts (author, created, forum, message, parent, thread) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
+					posts.Author, currentTime, thread.Forum, posts.Message, posts.Parent, thread.Id).
+					Scan(&postID)
+				if err != nil {
+					var e models.Error
+					e.Message = "Parent post does not find \n"
+					resData, _ := json.Marshal(e)
+					w.Header().Set("content-type", "application/json")
 
-// 	}
-// 	return
-// }
+					w.WriteHeader(http.StatusNotFound)
+					w.Write(resData)
+					return
+				}
+			}
+
+			if err != nil {
+				break
+			}
+
+			var post models.Post
+			err := db.QueryRow("SELECT * FROM Posts WHERE id=$1", postID).
+				Scan(&post.Author,
+					&post.Created,
+					&post.Forum,
+					&post.Id,
+					&post.IsEdited,
+					&post.Message,
+					&post.Parent,
+					&post.Thread)
+
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			returningPostsArr = append(returningPostsArr, post)
+
+			_, err = db.Exec("UPDATE Forums SET posts=posts+1 WHERE slug=$1", thread.Forum)
+
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+		resData, err := json.Marshal(returningPostsArr)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Write(resData)
+	}
+	return
+}
 
 func threadDetails(w http.ResponseWriter, r *http.Request) { //POST + //GET +
 	if r.Method == http.MethodGet { // +
@@ -924,7 +1004,7 @@ func threadPosts(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сло
 
 }
 
-func threadVote(w http.ResponseWriter, r *http.Request) { //POST +
+func threadVote(w http.ResponseWriter, r *http.Request) { //POST -
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 
@@ -943,9 +1023,11 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +
 		var oldUserVote models.Vote
 
 		returningThread, err := getThreadById(slugOrID)
+		fmt.Println(returningThread.Id)
 		if err != nil {
+			// fmt.Println(err.Error())
 			var e models.Error
-			e.Message = "Can't find user with slug " + slugOrID
+			e.Message = "Can't find thread with slug or id " + slugOrID
 			resData, _ := json.Marshal(e)
 
 			w.WriteHeader(http.StatusNotFound)
@@ -959,44 +1041,74 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +
 			return
 		}
 
-		threadSlugOrId, err := strconv.Atoi(slugOrID)
+		threadSlugOrID, err := strconv.Atoi(slugOrID)
+
+		oldUserVote.Nickname = newUserVote.Nickname
+
 		var adds string
 		if err != nil {
 			adds = "slug='" + slugOrID + "' "
+
 		} else {
-			adds = "id=" + strconv.Itoa(threadSlugOrId)
+			adds = "id=" + strconv.Itoa(threadSlugOrID)
 		}
 
-		row := db.QueryRow("SELECT voice FROM Votes WHERE nickname=$1", oldUserVote.Nickname)
-		err = row.Scan(&oldUserVote.Voice)
-		if err != nil {
-			_, err = db.Exec("INSERT INTO Votes(nickname, voice) VALUES ($1,$2) ", &newUserVote.Nickname, newUserVote.Voice)
-			err = db.QueryRow("UPDATE Threads SET nickname = $1, votes = votes+$1 WHERE "+adds+" RETURNING *;",
-				&newUserVote.Nickname,
-				&newUserVote.Voice).Scan(
-				&returningThread.Author,
-				&returningThread.Created,
-				&returningThread.Forum,
-				&returningThread.Id,
-				&returningThread.Message,
-				&returningThread.Slug,
-				&returningThread.Title,
-				&returningThread.Votes)
+		//Берем по никнейму, если ошибка - значит нет в базе
+		err = db.QueryRow("SELECT voice FROM Votes WHERE nickname=$1 AND thread=$2",
+			newUserVote.Nickname,
+			returningThread.Id).Scan(&oldUserVote.Voice)
 
+		fmt.Println("nick ", oldUserVote.Nickname)
+		fmt.Println("thread ", returningThread.Id)
+		fmt.Println("oldUserVote.Voice: ", oldUserVote.Voice)
+		fmt.Println("------ ")
+
+		if err != nil {
+			// fmt.Println(err.Error())
+			_, err = db.Exec("INSERT INTO Votes(nickname, voice, thread) VALUES ($1, $2, $3) ", newUserVote.Nickname, newUserVote.Voice, returningThread.Id)
+			err = db.QueryRow("UPDATE Threads SET votes=votes+$1 WHERE "+adds+" RETURNING *", newUserVote.Voice).
+				Scan(&returningThread.Author,
+					&returningThread.Created,
+					&returningThread.Forum,
+					&returningThread.Id,
+					&returningThread.Message,
+					&returningThread.Slug,
+					&returningThread.Title,
+					&returningThread.Votes)
+			if err != nil { //если нет юзера обработать ошибку
+				w.WriteHeader(http.StatusInternalServerError)
+				// fmt.Println(err.Error())
+				return
+			}
 			resData, _ := json.Marshal(returningThread)
 			w.WriteHeader(http.StatusOK)
 			w.Write(resData)
 			return
 
-		} else {
-			row.Scan(&oldUserVote.Voice)
+			fmt.Println("bgnermljgknmer;wkfj kwe;kf;ow")
+			fmt.Println(";wkfj kwe;kf;ow")
+		} else { //Если ошибки нет, значит пользователь есть в базе -> сравниваем с пред. голосом
+			fmt.Println("err.Error()")
+
 			if oldUserVote.Voice != newUserVote.Voice {
+
 				if oldUserVote.Voice == -1 {
-					_, err = db.Exec("UPDATE Threads SET votes=votes-2 WHERE " + adds + ";")
+					// fmt.Println("IF")
+
+					_, err = db.Exec("UPDATE Threads SET votes=votes+2 WHERE " + adds + ";")
+					_, err = db.Exec("UPDATE Votes SET voice=$1 WHERE nickname=$2;",
+						newUserVote.Voice,
+						newUserVote.Nickname)
 				} else {
-					_, err = db.Exec("UPDATE threads SET votes=votes+2 WHERE " + adds + ";")
+					// fmt.Println("ELSE")
+
+					_, err = db.Exec("UPDATE Threads SET votes=votes-2 WHERE " + adds + ";")
+					_, err = db.Exec("UPDATE Votes SET voice=$1 WHERE nickname=$2;",
+						newUserVote.Voice,
+						newUserVote.Nickname)
 				}
 			}
+			// oldUserVote.Voice
 
 			err := db.QueryRow("SELECT * FROM Threads WHERE "+adds+";").
 				Scan(&returningThread.Author,
@@ -1008,17 +1120,15 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +
 					&returningThread.Title,
 					&returningThread.Votes)
 			if err != nil {
-				if err == sql.ErrNoRows {
-					var e models.Error
-					e.Message = "Can't find thread author by slug or id" + slugOrID
-					resData, _ := json.Marshal(e.Message)
-					w.WriteHeader(http.StatusNotFound)
-					w.Write(resData)
-					return
-				}
-				w.WriteHeader(http.StatusInternalServerError)
+				var e models.Error
+				e.Message = "Can't find thread with slug or id " + slugOrID
+				resData, _ := json.Marshal(e)
+
+				w.WriteHeader(http.StatusNotFound)
+				w.Write(resData)
 				return
 			}
+
 			resData, _ := json.Marshal(returningThread)
 			w.WriteHeader(http.StatusOK)
 			w.Write(resData)
@@ -1221,19 +1331,20 @@ func userProfile(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 }
 
 func getThreadById(slug string) (*models.Thread, error) {
-	threadID, err := strconv.Atoi(slug)
+	ID, err := strconv.Atoi(slug)
 	var row *sql.Row
 	if err != nil {
 		row = db.QueryRow("SELECT * FROM Threads WHERE slug=$1;", slug)
 	} else {
-		row = db.QueryRow("SELECT * FROM Threads WHERE id=$1;", threadID)
+		row = db.QueryRow("SELECT * FROM Threads WHERE id=$1;", ID)
 	}
 
 	thread := new(models.Thread)
-	err = row.Scan(&thread.Id,
+	err = row.Scan(
 		&thread.Author,
 		&thread.Created,
 		&thread.Forum,
+		&thread.Id,
 		&thread.Message,
 		&thread.Slug,
 		&thread.Title,
@@ -1249,7 +1360,12 @@ func getThreadById(slug string) (*models.Thread, error) {
 func getForum(slugOrId string) (*models.Forum, error) {
 	forum := new(models.Forum)
 	var err error
-	err = db.QueryRow("SELECT * FROM Forums WHERE slug=$1", slugOrId).Scan(&forum.Posts, &forum.Slug, &forum.Threads, &forum.Title, &forum.User)
+	err = db.QueryRow("SELECT * FROM Forums WHERE slug=$1", slugOrId).
+		Scan(&forum.Posts,
+			&forum.Slug,
+			&forum.Threads,
+			&forum.Title,
+			&forum.User)
 
 	if err != nil {
 		return nil, err

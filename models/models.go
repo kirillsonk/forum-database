@@ -48,9 +48,9 @@ type PostFull struct {
 // }
 
 type Status struct {
-	Forum  int32 `json:"forum"`
-	Post   int64 `json:"post"`
-	Thread int32 `json:"thread"`
+	Forum  int32  `json:"forum"`
+	Post   int64  `json:"post"`
+	Thread int32  `json:"thread"`
 	User   string `json:"user"`
 }
 
@@ -104,4 +104,5 @@ type UserUpdate struct {
 type Vote struct {
 	Nickname string `json:"nickname"`
 	Voice    int32  `json:"voice"`
+	Thread   int32  `json:"thread"`
 }
