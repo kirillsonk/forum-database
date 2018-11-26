@@ -15,7 +15,7 @@ type Forum struct {
 }
 
 type Post struct {
-	Author   int64  `json:"author"`
+	Author   string `json:"author"`
 	Created  string `json:"created"`
 	Forum    string `json:"forum"`
 	Id       int64  `json:"id"`
@@ -48,10 +48,10 @@ type PostFull struct {
 // }
 
 type Status struct {
-	Forum  int32  `json:"forum"`
-	Post   int64  `json:"post"`
-	Thread int32  `json:"thread"`
-	User   string `json:"user"`
+	Forum  int32 `json:"forum"`
+	Post   int64 `json:"post"`
+	Thread int32 `json:"thread"`
+	User   int32 `json:"user"`
 }
 
 type Thread struct {
@@ -70,17 +70,6 @@ type ThreadUpdate struct {
 	Title   string `json:"title"`
 }
 
-// type Threads struct {
-// 	Author  string `json:"author"`
-// 	Created string `json:"created"`
-// 	Forum   string `json:"forum"`
-// 	Id      int32  `json:"id"`
-// 	Message string `json:"message"`
-// 	Slug    string `json:"slug"`
-// 	Title   string `json:"title"`
-// 	Votes   string `json:"votes"`
-// }
-
 type User struct {
 	About    string `json:"about"`
 	Email    string `json:"email"`
@@ -93,13 +82,6 @@ type UserUpdate struct {
 	Email    string `json:"email"`
 	Fullname string `json:"fullname"`
 }
-
-// type Users struct {
-// 	About    string `json:"about"`
-// 	Email    string `json:"email"`
-// 	Fullname string `json:"fullname"`
-// 	Nickname string `json:"nickname"`
-// }
 
 type Vote struct {
 	Nickname string `json:"nickname"`

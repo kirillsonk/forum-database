@@ -364,6 +364,7 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) �
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+
 			thrs = append(thrs, thr)
 		}
 		defer rows.Close()
@@ -615,36 +616,37 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 		if err != nil {
 			if updatePost.Message != "" && oldPost.Message != updatePost.Message {
 				err = db.QueryRow("UPDATE Posts SET message = $1, isedited = true WHERE id = $2 RETURNING *;",
-					currentPost.Author,
+					currentPost.Message,
 					ID).Scan(
-					&currentPost.Id,
 					&currentPost.Author,
-					&currentPost.Message,
-					&currentPost.IsEdited,
+					&currentPost.Created,
 					&currentPost.Forum,
-					&currentPost.Thread,
-					&currentPost.Created)
+					&currentPost.Id,
+					&currentPost.IsEdited,
+					&currentPost.Message,
+					&currentPost.Parent,
+					&currentPost.Thread)
 			} else {
 				currentPost = oldPost
 			}
 		}
 
-		if err != nil {
-			if err == sql.ErrNoRows {
-				var e models.Error
+		// if err != nil {
+		// 	if err == sql.ErrNoRows {
+		// 		var e models.Error
 
-				tmp := int(currentPost.Author)
-				pAuth := strconv.Itoa(tmp)
+		// 		tmp := int(currentPost.Author)
+		// 		pAuth := strconv.Itoa(tmp)
 
-				e.Message = "Can't find user with id = " + pAuth + "\n"
-				resData, _ := json.Marshal(e.Message)
-				w.WriteHeader(http.StatusNotFound)
-				w.Write(resData)
-				return
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		// 		e.Message = "Can't find user with id = " + pAuth + "\n"
+		// 		resData, _ := json.Marshal(e.Message)
+		// 		w.WriteHeader(http.StatusNotFound)
+		// 		w.Write(resData)
+		// 		return
+		// 	}
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	return
+		// }
 
 		resData, _ := json.Marshal(currentPost)
 		w.WriteHeader(http.StatusOK)
@@ -698,10 +700,9 @@ func serviceStatus(w http.ResponseWriter, r *http.Request) { //GET +
 	return
 }
 
-func postsCreate(w http.ResponseWriter, r *http.Request) { //POST !-
+func postsCreate(w http.ResponseWriter, r *http.Request) { //POST +/-
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
-
 		reqBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -710,20 +711,19 @@ func postsCreate(w http.ResponseWriter, r *http.Request) { //POST !-
 		args := mux.Vars(r)
 		slugOrId := args["slug_or_id"]
 
-		// var newPostsArr []models.Post
 		newPostsArr := make([]models.Post, 0)
+		returningPostsArr := make([]models.Post, 0)
 		var parentPost models.Post
 		currentTime := time.Now()
 		var postID int32
-		returningPostsArr := make([]models.Post, 0)
-		// var returningPostsArr []models.Post
+		defer r.Body.Close()
 
 		err = json.Unmarshal(reqBody, &newPostsArr)
 		if err != nil {
+			// fmt.Println(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		defer r.Body.Close()
 
 		thread, err := getThreadById(slugOrId)
 		if err != nil {
@@ -740,9 +740,8 @@ func postsCreate(w http.ResponseWriter, r *http.Request) { //POST !-
 		}
 
 		for index, posts := range newPostsArr {
-			fmt.Println("abkdkdkdkkddkdkdkkdkdkd")
-			if posts.Parent == 0 {
-				err := db.QueryRow("SELECT id FROM Posts WHERE id=$1, AND thread=$2 AND forum=$3",
+			if posts.Parent != 0 {
+				err := db.QueryRow("SELECT id FROM Posts WHERE id=$1 AND thread=$2 AND forum=$3;",
 					posts.Parent,
 					thread.Id,
 					thread.Forum).
@@ -1004,7 +1003,7 @@ func threadPosts(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сло
 
 }
 
-func threadVote(w http.ResponseWriter, r *http.Request) { //POST -
+func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 
@@ -1017,10 +1016,11 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST -
 
 		args := mux.Vars(r)
 		slugOrID := args["slug_or_id"]
-
-		// var returningThread models.Thread
-		var newUserVote models.Vote
-		var oldUserVote models.Vote
+		// forum := new(models.Forum)
+		newUserVote := new(models.Vote)
+		// var newUserVote models.Vote
+		oldUserVote := new(models.Vote)
+		// var oldUserVote models.Vote
 
 		returningThread, err := getThreadById(slugOrID)
 		fmt.Println(returningThread.Id)
