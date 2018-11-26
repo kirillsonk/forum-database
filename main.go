@@ -1023,9 +1023,7 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 		// var oldUserVote models.Vote
 
 		returningThread, err := getThreadById(slugOrID)
-		fmt.Println(returningThread.Id)
 		if err != nil {
-			// fmt.Println(err.Error())
 			var e models.Error
 			e.Message = "Can't find thread with slug or id " + slugOrID
 			resData, _ := json.Marshal(e)
@@ -1040,12 +1038,9 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-
-		threadSlugOrID, err := strconv.Atoi(slugOrID)
-
 		oldUserVote.Nickname = newUserVote.Nickname
-
 		var adds string
+		threadSlugOrID, err := strconv.Atoi(slugOrID)
 		if err != nil {
 			adds = "slug='" + slugOrID + "' "
 
@@ -1055,17 +1050,14 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 
 		//Берем по никнейму, если ошибка - значит нет в базе
 		err = db.QueryRow("SELECT voice FROM Votes WHERE nickname=$1 AND thread=$2",
-			newUserVote.Nickname,
-			returningThread.Id).Scan(&oldUserVote.Voice)
-
-		fmt.Println("nick ", oldUserVote.Nickname)
-		fmt.Println("thread ", returningThread.Id)
-		fmt.Println("oldUserVote.Voice: ", oldUserVote.Voice)
-		fmt.Println("------ ")
+			newUserVote.Nickname, returningThread.Id).Scan(&oldUserVote.Voice)
 
 		if err != nil {
 			// fmt.Println(err.Error())
-			_, err = db.Exec("INSERT INTO Votes(nickname, voice, thread) VALUES ($1, $2, $3) ", newUserVote.Nickname, newUserVote.Voice, returningThread.Id)
+			_, err = db.Exec("INSERT INTO Votes (nickname, voice, thread) VALUES ($1, $2, $3);", newUserVote.Nickname, newUserVote.Voice, returningThread.Id)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
 			err = db.QueryRow("UPDATE Threads SET votes=votes+$1 WHERE "+adds+" RETURNING *", newUserVote.Voice).
 				Scan(&returningThread.Author,
 					&returningThread.Created,
@@ -1084,23 +1076,18 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 			w.WriteHeader(http.StatusOK)
 			w.Write(resData)
 			return
-
-			fmt.Println("bgnermljgknmer;wkfj kwe;kf;ow")
-			fmt.Println(";wkfj kwe;kf;ow")
 		} else { //Если ошибки нет, значит пользователь есть в базе -> сравниваем с пред. голосом
-			fmt.Println("err.Error()")
-
+			fmt.Println("No error")
 			if oldUserVote.Voice != newUserVote.Voice {
-
 				if oldUserVote.Voice == -1 {
-					// fmt.Println("IF")
+					fmt.Println("IF")
 
 					_, err = db.Exec("UPDATE Threads SET votes=votes+2 WHERE " + adds + ";")
 					_, err = db.Exec("UPDATE Votes SET voice=$1 WHERE nickname=$2;",
 						newUserVote.Voice,
 						newUserVote.Nickname)
 				} else {
-					// fmt.Println("ELSE")
+					fmt.Println("ELSE")
 
 					_, err = db.Exec("UPDATE Threads SET votes=votes-2 WHERE " + adds + ";")
 					_, err = db.Exec("UPDATE Votes SET voice=$1 WHERE nickname=$2;",
@@ -1108,7 +1095,6 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 						newUserVote.Nickname)
 				}
 			}
-			// oldUserVote.Voice
 
 			err := db.QueryRow("SELECT * FROM Threads WHERE "+adds+";").
 				Scan(&returningThread.Author,

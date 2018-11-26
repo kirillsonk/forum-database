@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS Posts		-- Done
 CREATE TABLE IF NOT EXISTS Votes 		-- Done
 (  
 	nickname citext PRIMARY KEY REFERENCES Users(nickname),
-	voice int UNIQUE,
+	voice int DEFAULT 0,
 	thread int REFERENCES Threads(id),
 	UNIQUE (nickname, thread)
 );
