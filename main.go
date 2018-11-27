@@ -149,15 +149,16 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST +- (почему-то иногда ломается)
+func createThread(w http.ResponseWriter, r *http.Request) { //POST +- ??? (почему-то иногда ломается)
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
-		w.Header()["Date"] = nil
+		// w.Header()["Date"] = nil
 		reqBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		defer r.Body.Close()
 
 		var thread models.Thread
 		var newThread models.Thread
@@ -167,8 +168,6 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +- (поче�
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-
-		defer r.Body.Close()
 
 		args := mux.Vars(r)
 		Slug := args["slug"]
@@ -209,14 +208,12 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +- (поче�
 			// fmt.Println(err.Error())
 			if err.Error() == "pq: insert or update on table \"threads\" violates foreign key constraint \"threads_author_fkey\"" ||
 				err.Error() == "pq: insert or update on table \"threads\" violates foreign key constraint \"threads_forum_fkey\"" {
-				// if err == sql.ErrNoRows {
 				var e models.Error
 				e.Message = "Can't find user with id " + thread.Author
 				resData, _ := json.Marshal(e)
 				w.WriteHeader(http.StatusNotFound)
 				w.Write(resData)
 				return
-				// } else if err.Error() == "pq: insert or update on table \"threads\" violates foreign key constraint \"threads_forum_fkey\"" {
 			}
 			if err.Error() == "pq: duplicate key value violates unique constraint \"threads_slug_key\"" {
 				// fmt.Println(err.Error())
@@ -235,12 +232,16 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +- (поче�
 				return
 			}
 			// fmt.Println(err.Error())
-			// w.WriteHeader(http.StatusInternalServerError)
-			// return
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		//Берем из форумов, чтобы регистр соответсвовал
-		db.QueryRow("SELECT slug FROM Forums WHERE slug=$1", thread.Forum).Scan(&newThread.Forum)
+		err = db.QueryRow("SELECT slug FROM Forums WHERE slug=$1", thread.Forum).Scan(&newThread.Forum)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
 		resData, _ := json.Marshal(newThread)
 		w.WriteHeader(http.StatusCreated)
@@ -292,9 +293,8 @@ func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероя
 	return
 }
 
-func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) сложна оптимизировать
+func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+) (Sort) сложнA оптимизировать
 	if r.Method == http.MethodGet {
-
 		limitVal := r.URL.Query().Get("limit")
 		sinceVal := r.URL.Query().Get("since")
 		descVal := r.URL.Query().Get("desc")
@@ -321,6 +321,18 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) �
 		var rows *sql.Rows
 		var err error
 
+		_, err = getForum(slug)
+		if err != nil {
+			var e models.Error
+			e.Message = "Can't find forum with slug " + slug
+			resp, _ := json.Marshal(e)
+			w.Header().Set("content-type", "application/json")
+
+			w.WriteHeader(http.StatusNotFound)
+			w.Write(resp)
+			return
+		}
+
 		if limit && !since && !desc {
 			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 ORDER BY created LIMIT $2;", slug, limitVal)
 		} else if since && !limit && !desc {
@@ -340,18 +352,20 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) �
 		} else {
 			rows, err = db.Query("SELECT * FROM Threads WHERE forum = $1 ORDER BY created;", slug)
 		}
-
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		thrs := make([]*models.Thread, 0)
+		thrs := make([]models.Thread, 0)
+		// var thrs *[]models.Thread
 
 		for rows.Next() {
-			// var thr *models.Thread
-			thr := new(models.Thread)
-			err := rows.Scan(&thr.Author,
+			// fmt.Println("цикл")
+			var thr models.Thread
+			// thr := new(models.Thread)
+			err := rows.Scan(
+				&thr.Author,
 				&thr.Created,
 				&thr.Forum,
 				&thr.Id,
@@ -359,32 +373,22 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) �
 				&thr.Slug,
 				&thr.Title,
 				&thr.Votes)
+
 			if err != nil {
-				//fmt.Println(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 
 			thrs = append(thrs, thr)
 		}
+
 		defer rows.Close()
 
-		_, err = getForum(slug)
-		if err != nil {
-			// fmt.Println(err.Error())
-			var e models.Error
-			e.Message = "Can't find forum with slug " + slug + "\n"
-			resp, _ := json.Marshal(e)
-			w.Header().Set("content-type", "application/json")
+		// fmt.Println(thrs)
 
-			w.WriteHeader(http.StatusNotFound)
-			w.Write(resp)
-			return
-		}
-
-		resp, _ := json.Marshal(thrs)
+		resData, _ := json.Marshal(thrs)
 		w.WriteHeader(http.StatusOK)
-		w.Write(resp)
+		w.Write(resData)
 
 		return
 	}
@@ -392,7 +396,7 @@ func forumThreads(w http.ResponseWriter, r *http.Request) { //GET (+/-) (Sort) �
 	return
 }
 
-func forumUsers(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сделать (без рекурсии)
+func forumUsers(w http.ResponseWriter, r *http.Request) { //GET + (Sort) Сделать (без рекурсии)
 	if r.Method == http.MethodGet {
 		limitVal := r.URL.Query().Get("limit")
 		sinceVal := r.URL.Query().Get("since")
@@ -418,19 +422,18 @@ func forumUsers(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сде�
 		vars := mux.Vars(r)
 		slug := vars["slug"]
 
-		// frm := getForum(slug)
+		frm, err := getForum(slug)
 
-		// if frm == nil {
-		// 	// e := new(Error)
-		// 	var e models.Error
-		// 	e.Message = "Can't find forum with slug " + slug + "\n"
-		// 	resp, _ := json.Marshal(e)
-		// 	w.Header().Set("content-type", "application/json")
+		if frm == nil {
+			var e models.Error
+			e.Message = "Can't find forum with slug " + slug + "\n"
+			resp, _ := json.Marshal(e)
+			w.Header().Set("content-type", "application/json")
 
-		// 	w.WriteHeader(http.StatusNotFound)
-		// 	w.Write(resp)
-		// 	return
-		// }
+			w.WriteHeader(http.StatusNotFound)
+			w.Write(resp)
+			return
+		}
 
 		if !limit && !since && !desc {
 			rows, err = db.Query("SELECT * FROM Users WHERE nickname IN (SELECT author FROM Threads WHERE forum=$1 GROUP BY author) OR nickname IN (SELECT author FROM Posts WHERE forum=$1 GROUP BY author) ORDER BY nickname ASC;", slug)
@@ -468,7 +471,8 @@ func forumUsers(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сде�
 
 		for rows.Next() {
 			// usr := User{}
-			var usr models.User
+			// var usr models.User
+			usr := new(models.User)
 
 			err := rows.Scan(&usr.About, &usr.Email, &usr.Fullname, &usr.Nickname)
 
@@ -477,7 +481,7 @@ func forumUsers(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сде�
 				return
 			}
 
-			users = append(users, usr)
+			users = append(users, *usr)
 		}
 
 		resp, _ := json.Marshal(users)
@@ -586,6 +590,7 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
+			fmt.Println(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -600,23 +605,24 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 
 		err = json.Unmarshal(reqBody, &updatePost)
 		if err != nil {
+			fmt.Println(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		err = db.QueryRow("SELECT * FROM Posts WHERE id = &1 ;", ID).Scan(
-			&oldPost.Id,
-			&oldPost.Parent,
-			&oldPost.Author,
-			&oldPost.Message,
-			&oldPost.IsEdited,
-			&oldPost.Forum,
-			&oldPost.Thread,
-			&oldPost.Created)
+		err = db.QueryRow("SELECT * FROM Posts WHERE id = &1;", ID).
+			Scan(&oldPost.Author,
+				&oldPost.Created,
+				&oldPost.Forum,
+				&oldPost.Id,
+				&oldPost.IsEdited,
+				&oldPost.Message,
+				&oldPost.Parent,
+				&oldPost.Thread)
 		if err != nil {
 			if updatePost.Message != "" && oldPost.Message != updatePost.Message {
 				err = db.QueryRow("UPDATE Posts SET message = $1, isedited = true WHERE id = $2 RETURNING *;",
-					currentPost.Message,
+					updatePost.Message,
 					ID).Scan(
 					&currentPost.Author,
 					&currentPost.Created,
@@ -631,22 +637,14 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 			}
 		}
 
-		// if err != nil {
-		// 	if err == sql.ErrNoRows {
-		// 		var e models.Error
-
-		// 		tmp := int(currentPost.Author)
-		// 		pAuth := strconv.Itoa(tmp)
-
-		// 		e.Message = "Can't find user with id = " + pAuth + "\n"
-		// 		resData, _ := json.Marshal(e.Message)
-		// 		w.WriteHeader(http.StatusNotFound)
-		// 		w.Write(resData)
-		// 		return
-		// 	}
-		// 	w.WriteHeader(http.StatusInternalServerError)
-		// 	return
-		// }
+		if err != nil {
+			var e models.Error
+			e.Message = "Can't find user with id = " + ID
+			resData, _ := json.Marshal(e)
+			w.WriteHeader(http.StatusNotFound)
+			w.Write(resData)
+			return
+		}
 
 		resData, _ := json.Marshal(currentPost)
 		w.WriteHeader(http.StatusOK)
@@ -1000,7 +998,179 @@ func threadDetails(w http.ResponseWriter, r *http.Request) { //POST + //GET +
 }
 
 func threadPosts(w http.ResponseWriter, r *http.Request) { //GET - (Sort) СложнАААААААААА
+	if r.Method == http.MethodGet {
+		vars := mux.Vars(r)
+		slugOrId := vars["slug_or_id"]
 
+		thr, err := getThreadById(slugOrId)
+
+		if err != nil {
+			e := new(models.Error)
+			e.Message = "Can't find thread with id " + slugOrId + "\n"
+			resp, _ := json.Marshal(e)
+			w.Header().Set("content-type", "application/json")
+
+			w.WriteHeader(http.StatusNotFound)
+			w.Write(resp)
+			return
+		}
+
+		limitVal := r.URL.Query().Get("limit")
+		sinceVal := r.URL.Query().Get("since")
+		descVal := r.URL.Query().Get("desc")
+		sortVal := r.URL.Query().Get("sort")
+
+		var since = false
+		var desc = false
+		var limit = false
+
+		if limitVal == "" {
+			limitVal = " ALL"
+		} else {
+			limit = true
+		}
+		if sinceVal != "" {
+			since = true
+		}
+		if descVal == "true" {
+			desc = true
+		}
+		if sortVal != "flat" && sortVal != "tree" && sortVal != "parent_tree" {
+			sortVal = "flat"
+		}
+
+		var rows *sql.Rows
+
+		if sortVal == "flat" {
+			if desc {
+
+				if since {
+
+					rows, err = db.Query("SELECT * FROM Posts WHERE thread = $1 AND id < $3 ORDER BY created DESC, id DESC LIMIT $2", thr.Id, limitVal, sinceVal)
+
+				} else {
+
+					rows, err = db.Query("SELECT * FROM Posts WHERE thread = $1 ORDER BY id DESC LIMIT $2", thr.Id, limitVal)
+
+				}
+
+			} else {
+
+				if since {
+
+					rows, err = db.Query("SELECT * FROM Posts WHERE thread = $1 AND id > $3 ORDER BY id ASC LIMIT $2", thr.Id, limitVal, sinceVal)
+
+				} else {
+					query := "SELECT * FROM Posts WHERE thread = $1 ORDER BY id ASC LIMIT " + limitVal
+					rows, err = db.Query(query, thr.Id)
+
+				}
+
+			}
+		} else if sortVal == "tree" {
+			sinceAddition := ""
+			sortAddition := ""
+			limitAddition := ""
+			if desc == true {
+				sortAddition = " order by path[0],path DESC "
+				if since != false {
+					sinceAddition = " where path < (select path from post_tree where id = " + sinceVal + " ) "
+				}
+			} else {
+				sortAddition = " order by path[0],path ASC"
+				if since != false {
+					sinceAddition = " where path > (select path from post_tree where id = " + sinceVal + " ) "
+				}
+			}
+
+			if limit != false {
+				limitAddition = "limit " + limitVal
+			}
+			query := "WITH recursive post_tree(id,path) as(select p.id,array_append('{}'::int[], id) as arr_id from Posts p " +
+				"where p.parent = 0 and p.thread=$1 union all " +
+				"select p.id, array_append(path, p.id) from posts p join post_tree pt on p.parent = pt.id) " +
+				"select p.author,p.created,p.forum,p.id,p.isedited,p.message,p.parent,p.thread from post_tree pt join " +
+				"Posts p on p.id = pt.id " + sinceAddition + " " + sortAddition + " " + limitAddition
+			rows, err = db.Query(query, thr.Id)
+		} else if sortVal == "parent_tree" {
+			descflag := ""
+			sinceAddition := ""
+			sortAddition := ""
+			limitAddition := ""
+			if desc == true {
+				descflag = " desc "
+				sortAddition = "order by path[1] DESC,path"
+				if since != false {
+					sinceAddition = " where path[1] < (select path[1] from post_tree where id = " + sinceVal + " ) "
+				}
+			} else {
+				descflag = " asc "
+				sortAddition = " order by path[1] ,path ASC"
+				if since != false {
+					sinceAddition = " where path[1] > (select path[1] from post_tree where id = " + sinceVal + " ) "
+				}
+			}
+
+			if limit != false {
+				limitAddition = " where r <= " + limitVal
+			}
+
+			query := "select p.author,p.created,p.forum,p.id,p.isedited,p.message,p.parent,p.thread from (with recursive post_tree(id,path) as( " +
+				"select p.id,array_append('{}'::int[], p.id) as arr_id " +
+				"from posts p " +
+				"where p.parent = 0 and p.thread = $1 " +
+
+				"union all " +
+
+				"select p.id, array_append(path, p.id) from Posts p " +
+				"join post_tree pt on p.parent = pt.id " +
+				") " +
+				"select post_tree.id as id,path, dense_rank() over (order by path[1] " + descflag + " ) as " +
+				"r from post_tree " + sinceAddition + " ) as pt join posts p on p.id = pt.id " + limitAddition + " " + sortAddition + ";"
+			rows, err = db.Query(query, thr.Id)
+		}
+
+		if err != nil {
+			fmt.Println(err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		//intLimit, _ := strconv.Atoi(limitVal)
+		////childPosts := make([]Post, 0)
+		//responsePosts := make([]Post, 0)
+		//var count= 0
+
+		defer rows.Close()
+		posts := make([]models.Post, 0)
+		var i = 0
+		for rows.Next() {
+			i++
+			post := models.Post{}
+
+			err = rows.Scan(&post.Author, &post.Created, &post.Forum, &post.Id, &post.IsEdited, &post.Message, &post.Parent, &post.Thread)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			//err = arr.Scan(&post.Childs)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			posts = append(posts, post)
+
+		}
+		w.Header().Set("content-type", "application/json")
+
+		resp, _ := json.Marshal(posts)
+
+		w.Write(resp)
+
+		return
+	}
+	return
 }
 
 func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
@@ -1053,11 +1223,7 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 			newUserVote.Nickname, returningThread.Id).Scan(&oldUserVote.Voice)
 
 		if err != nil {
-			// fmt.Println(err.Error())
 			_, err = db.Exec("INSERT INTO Votes (nickname, voice, thread) VALUES ($1, $2, $3);", newUserVote.Nickname, newUserVote.Voice, returningThread.Id)
-			if err != nil {
-				fmt.Println(err.Error())
-			}
 			err = db.QueryRow("UPDATE Threads SET votes=votes+$1 WHERE "+adds+" RETURNING *", newUserVote.Voice).
 				Scan(&returningThread.Author,
 					&returningThread.Created,
@@ -1077,18 +1243,14 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 			w.Write(resData)
 			return
 		} else { //Если ошибки нет, значит пользователь есть в базе -> сравниваем с пред. голосом
-			fmt.Println("No error")
+			// fmt.Println("No error")
 			if oldUserVote.Voice != newUserVote.Voice {
 				if oldUserVote.Voice == -1 {
-					fmt.Println("IF")
-
 					_, err = db.Exec("UPDATE Threads SET votes=votes+2 WHERE " + adds + ";")
 					_, err = db.Exec("UPDATE Votes SET voice=$1 WHERE nickname=$2;",
 						newUserVote.Voice,
 						newUserVote.Nickname)
 				} else {
-					fmt.Println("ELSE")
-
 					_, err = db.Exec("UPDATE Threads SET votes=votes-2 WHERE " + adds + ";")
 					_, err = db.Exec("UPDATE Votes SET voice=$1 WHERE nickname=$2;",
 						newUserVote.Voice,
