@@ -149,7 +149,7 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST - ??? (почему-то иногда ломается)
+func createThread(w http.ResponseWriter, r *http.Request) { //POST + (почему-то иногда ломается, вроде починил)
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 		reqBody, err := ioutil.ReadAll(r.Body)
@@ -235,6 +235,8 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST - ??? (поч
 			return
 		}
 
+		_, err = db.Exec("UPDATE Forums SET threads=threads+1 WHERE slug=$1", thread.Forum)
+
 		//Берем из форумов, чтобы регистр соответсвовал
 		err = db.QueryRow("SELECT slug FROM Forums WHERE slug=$1", thread.Forum).Scan(&newThread.Forum)
 		if err != nil {
@@ -250,6 +252,9 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST - ??? (поч
 }
 
 func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероятно, неправильно написан)
+
+	//Где вообще обновляется Threads? Почему приходит нулевой, потому что не кладется нигде
+	//threadcreate,
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
@@ -266,19 +271,21 @@ func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероя
 				&forum.Title,
 				&forum.User)
 
-		// fmt.Println(forum)
-		// fmt.Println("------------------")
-
 		if err != nil {
 			// fmt.Println(err.Error())
 			var e models.Error
-			e.Message = "Can't find user with slug " + Slug
+			e.Message = "Can't find forum with slug " + Slug
 			resData, _ := json.Marshal(e)
 
 			w.WriteHeader(http.StatusNotFound)
 			w.Write(resData)
 			return
 		}
+		// err = db.QueryRow("SELECT id FROM Threads WHERE forum = $1;", Slug).
+		// 	Scan(&forum.Threads)
+
+		fmt.Println(forum.Threads)
+		fmt.Println("------------------")
 
 		resData, _ := json.Marshal(forum)
 		w.WriteHeader(http.StatusOK)
