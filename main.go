@@ -104,7 +104,7 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 		if err != nil {
 			if err == sql.ErrNoRows {
 				var e models.Error
-				e.Message = "Can't find user with nickname: " + forum.User + "\n"
+				e.Message = "Can't find user with nickname: " + forum.User
 				resData, _ := json.Marshal(e)
 				w.WriteHeader(http.StatusNotFound)
 				w.Write(resData)
@@ -149,10 +149,9 @@ func createForum(w http.ResponseWriter, r *http.Request) { //POST +
 	return
 }
 
-func createThread(w http.ResponseWriter, r *http.Request) { //POST +- ??? (почему-то иногда ломается)
+func createThread(w http.ResponseWriter, r *http.Request) { //POST - ??? (почему-то иногда ломается)
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
-		// w.Header()["Date"] = nil
 		reqBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -242,7 +241,6 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST +- ??? (по�
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-
 		resData, _ := json.Marshal(newThread)
 		w.WriteHeader(http.StatusCreated)
 		w.Write(resData)
@@ -258,22 +256,19 @@ func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероя
 		args := mux.Vars(r)
 		Slug := args["slug"]
 
-		var forum models.Forum
+		forum := new(models.Forum)
 
-		// fmt.Println(Slug)
-		// fmt.Println("------------------")
-
-		err := db.QueryRow("SELECT slug, title, author FROM Forums WHERE slug = $1;", Slug).
-			// err := db.QueryRow("SELECT * FROM Forums WHERE slug = $1;", Slug).
-			Scan(
-				// &forum.Posts,
+		// err := db.QueryRow("SELECT slug, title, author FROM Forums WHERE slug = $1;", Slug).
+		err := db.QueryRow("SELECT * FROM Forums WHERE slug = $1;", Slug).
+			Scan(&forum.Posts,
 				&forum.Slug,
-				// &forum.Threads,
+				&forum.Threads,
 				&forum.Title,
 				&forum.User)
 
 		// fmt.Println(forum)
 		// fmt.Println("------------------")
+
 		if err != nil {
 			// fmt.Println(err.Error())
 			var e models.Error

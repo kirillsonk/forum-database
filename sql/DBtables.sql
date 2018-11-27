@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS Forums		-- Done (+)
 (
 	posts bigint DEFAULT 0,
 	slug citext UNIQUE NOT NULL,
-	threads int DEFAULT 0,
+	threads bigint DEFAULT 0,
 	title citext,
 	author citext PRIMARY KEY REFERENCES Users(nickname)
 );
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS Threads		-- Done
 	id bigserial PRIMARY KEY,
 	message citext,
 	slug citext UNIQUE,
-	title citext UNIQUE NOT NULL,
+	title citext NOT NULL,
 	votes bigint DEFAULT 0
 );
 
