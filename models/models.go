@@ -26,7 +26,7 @@ type Post struct {
 }
 
 type PostFull struct {
-	Author *User   `json:"user"`
+	Author *User   `json:"author"`
 	Forum  *Forum  `json:"forum"`
 	Post   *Post   `json:"post"`
 	Thread *Thread `json:"thread"`

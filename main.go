@@ -65,7 +65,7 @@ func router() {
 	router.HandleFunc("/api/forum/{slug}/details", forumDetails)
 	router.HandleFunc("/api/forum/{slug}/threads", forumThreads)
 	router.HandleFunc("/api/forum/{slug}/users", forumUsers)
-	router.HandleFunc("/api/post/{id}/details", postDetails)
+	router.HandleFunc("/api/post/{id}/details", postDetails) //Осталось только это!!!
 	router.HandleFunc("/api/service/clear", serviceClear)
 	router.HandleFunc("/api/service/status", serviceStatus)
 	router.HandleFunc("/api/thread/{slug_or_id}/create", postsCreate)
@@ -492,7 +492,7 @@ func forumUsers(w http.ResponseWriter, r *http.Request) { //GET + (Sort) Сде�
 	return
 }
 
-func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
+func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST -
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
@@ -508,32 +508,44 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
 			Scan(&post.Author,
 				&post.Created,
 				&post.Forum,
-				ID,
+				&post.Id,
 				&post.IsEdited,
 				&post.Message,
 				&post.Parent,
 				&post.Thread)
-
 		if err != nil {
 			if err == sql.ErrNoRows {
 				var e models.Error
 				e.Message = "Can't find user with id " + ID
-				resData, _ := json.Marshal(e.Message)
+				resData, _ := json.Marshal(e)
 				w.WriteHeader(http.StatusNotFound)
 				w.Write(resData)
 				return
 			}
-			fmt.Println(err.Error())
+			// fmt.Println(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		var postFull models.PostFull
+		var relatedObj []string
+		for index := range relAdds {
+			item := relAdds[index]
+			relatedObj = append(relatedObj, item)
+		}
 
-		for _, data := range relAdds {
-			if data == "user" {
-				var postUser models.User
-				row := db.QueryRow("SELECT * FROM Users WHERE nickname = 1$;", post.Author)
+		var postFull models.PostFull
+		// postFull := new(models.PostFull)
+
+		postFull.Post = &post
+
+		for i := range relatedObj {
+			// fmt.Println("Loop going...")
+			fmt.Println(relAdds[i])
+			if relatedObj[i] == "user" {
+				// fmt.Println("Entered User")
+				postUser := new(models.User)
+
+				row := db.QueryRow("SELECT * FROM Users WHERE nickname = $1;", post.Author)
 				err := row.Scan(
 					&postUser.About,
 					&postUser.Email,
@@ -543,12 +555,13 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
-				postFull.Author = &postUser
+				postFull.Author = postUser
 			}
 
-			if data == "thread" {
+			if relatedObj[i] == "thread" {
+				// fmt.Println(" Entered thread")
 				var postThread models.Thread
-				row := db.QueryRow("SELECT * FROM Threads WHERE id = 1$;", post.Thread)
+				row := db.QueryRow("SELECT * FROM Threads WHERE id = $1;", post.Thread)
 				err := row.Scan(
 					&postThread.Author,
 					&postThread.Created,
@@ -564,9 +577,11 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
 				}
 				postFull.Thread = &postThread
 			}
-			if data == "forum" {
+			if relatedObj[i] == "forum" {
+				// fmt.Println("Entered forum")
+
 				var postForum models.Forum
-				row := db.QueryRow("SELECT * FROM Forums WHERE slug = 1$;", post.Forum)
+				row := db.QueryRow("SELECT * FROM Forums WHERE slug = $1;", post.Forum)
 				err := row.Scan(
 					&postForum.Posts,
 					&postForum.Slug,
@@ -611,21 +626,23 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
 			return
 		}
 
-		err = db.QueryRow("SELECT * FROM Posts WHERE id = &1;", ID).
-			Scan(&oldPost.Author,
-				&oldPost.Created,
-				&oldPost.Forum,
-				&oldPost.Id,
-				&oldPost.IsEdited,
-				&oldPost.Message,
-				&oldPost.Parent,
-				&oldPost.Thread)
+		err = db.QueryRow("SELECT message FROM Posts WHERE id = $1;", ID).
+			Scan(&oldPost.Message)
 		if err != nil {
-			if updatePost.Message != "" && oldPost.Message != updatePost.Message {
-				err = db.QueryRow("UPDATE Posts SET message = $1, isedited = true WHERE id = $2 RETURNING *;",
-					updatePost.Message,
-					ID).Scan(
-					&currentPost.Author,
+			var e models.Error
+			e.Message = "Can't find forum with slug " + ID
+			resp, _ := json.Marshal(e)
+
+			w.WriteHeader(http.StatusNotFound)
+			w.Write(resp)
+			return
+		}
+
+		if updatePost.Message != "" && oldPost.Message != updatePost.Message {
+			err = db.QueryRow("UPDATE Posts SET message = $1, isedited = true WHERE id = $2 RETURNING *",
+				updatePost.Message,
+				ID).
+				Scan(&currentPost.Author,
 					&currentPost.Created,
 					&currentPost.Forum,
 					&currentPost.Id,
@@ -633,18 +650,27 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
 					&currentPost.Message,
 					&currentPost.Parent,
 					&currentPost.Thread)
-			} else {
-				currentPost = oldPost
-			}
-		}
+			if err != nil {
+				var e models.Error
+				e.Message = "Can't find forum with slug " + ID
+				resData, _ := json.Marshal(e)
 
-		if err != nil {
-			var e models.Error
-			e.Message = "Can't find user with id = " + ID
-			resData, _ := json.Marshal(e)
-			w.WriteHeader(http.StatusNotFound)
-			w.Write(resData)
-			return
+				w.WriteHeader(http.StatusNotFound)
+				w.Write(resData)
+				return
+			}
+		} else {
+			err = db.QueryRow("SELECT * FROM Posts WHERE id = $1", ID).
+				Scan(&oldPost.Author,
+					&oldPost.Created,
+					&oldPost.Forum,
+					&oldPost.Id,
+					&oldPost.IsEdited,
+					&oldPost.Message,
+					&oldPost.Parent,
+					&oldPost.Thread)
+
+			currentPost = oldPost
 		}
 
 		resData, _ := json.Marshal(currentPost)
@@ -657,13 +683,6 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
 func serviceClear(w http.ResponseWriter, r *http.Request) { //POST +
 	if r.Method == http.MethodPost {
 		w.Header().Set("Content-Type", "application/json")
-
-		// sqlQuery := `
-		// TRUNCATE TABLE post CASCADE;
-		// TRUNCATE TABLE forumUser CASCADE;
-		// TRUNCATE TABLE forum CASCADE;
-		// TRUNCATE TABLE thread CASCADE;
-		// TRUNCATE TABLE vote CASCADE;`
 
 		_, err := db.Query("TRUNCATE TABLE Users, Forums, Threads, Posts, Votes")
 		if err != nil {
