@@ -14,7 +14,7 @@ import (
 	// models "./models"
 
 	"github.com/gorilla/mux"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 var db *sql.DB
