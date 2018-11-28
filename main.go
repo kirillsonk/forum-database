@@ -254,7 +254,7 @@ func createThread(w http.ResponseWriter, r *http.Request) { //POST + (почем
 func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероятно, неправильно написан)
 
 	//Где вообще обновляется Threads? Почему приходит нулевой, потому что не кладется нигде
-	//threadcreate,
+	//createThread, теперь добавляет, вроде ок
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
@@ -281,11 +281,9 @@ func forumDetails(w http.ResponseWriter, r *http.Request) { //GET +  (вероя
 			w.Write(resData)
 			return
 		}
-		// err = db.QueryRow("SELECT id FROM Threads WHERE forum = $1;", Slug).
-		// 	Scan(&forum.Threads)
 
-		fmt.Println(forum.Threads)
-		fmt.Println("------------------")
+		// fmt.Println(forum.Threads)
+		// fmt.Println("------------------")
 
 		resData, _ := json.Marshal(forum)
 		w.WriteHeader(http.StatusOK)
