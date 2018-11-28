@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
-	models "./models"
+	"github.com/kirillsonk/forum-database/models"
+	// models "./models"
+
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
@@ -19,15 +21,19 @@ var db *sql.DB
 
 func init() {
 	const (
-		host     = "localhost"
-		user     = "ksonk"
-		password = "k123"
-		dbname   = "forumdb"
+		// host     = "localhost"
+		// user     = "ksonk"
+		// password = "k123"
+		// dbname   = "forumdb"
+		user     = "docker"
+		password = "docker"
+		dbname   = "docker"
 	)
+
 	var err error
-	psqlInfo := fmt.Sprintf("host=%s user=%s "+
+	psqlInfo := fmt.Sprintf("user=%s "+
 		"password=%s dbname=%s sslmode=disable",
-		host, user, password, dbname)
+		user, password, dbname)
 
 	db, err = sql.Open("postgres", psqlInfo)
 
@@ -63,7 +69,7 @@ func router() {
 	router.HandleFunc("/api/forum/{slug}/details", forumDetails)
 	router.HandleFunc("/api/forum/{slug}/threads", forumThreads)
 	router.HandleFunc("/api/forum/{slug}/users", forumUsers)
-	router.HandleFunc("/api/post/{id}/details", postDetails) //Осталось только это!!!
+	router.HandleFunc("/api/post/{id}/details", postDetails)
 	router.HandleFunc("/api/service/clear", serviceClear)
 	router.HandleFunc("/api/service/status", serviceStatus)
 	router.HandleFunc("/api/thread/{slug_or_id}/create", postsCreate)
