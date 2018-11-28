@@ -492,7 +492,7 @@ func forumUsers(w http.ResponseWriter, r *http.Request) { //GET + (Sort) Сде�
 	return
 }
 
-func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
+func postDetails(w http.ResponseWriter, r *http.Request) { //GET - //POST +
 	if r.Method == http.MethodGet {
 		w.Header().Set("content-type", "application/json")
 
@@ -504,15 +504,15 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 		// var postFull models.PostFull
 		var post models.Post
 
-		err := db.QueryRow("SELECT * FROM Posts WHERE id = $1;", ID).Scan(
-			&post.Author,
-			&post.Created,
-			&post.Forum,
-			ID,
-			&post.IsEdited,
-			&post.Message,
-			&post.Parent,
-			&post.Thread)
+		err := db.QueryRow("SELECT * FROM Posts WHERE id = $1;", ID).
+			Scan(&post.Author,
+				&post.Created,
+				&post.Forum,
+				ID,
+				&post.IsEdited,
+				&post.Message,
+				&post.Parent,
+				&post.Thread)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -523,6 +523,7 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 				w.Write(resData)
 				return
 			}
+			fmt.Println(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -532,7 +533,7 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 		for _, data := range relAdds {
 			if data == "user" {
 				var postUser models.User
-				row := db.QueryRow("SELECT * FROM User WHERE nickname = 1$;", post.Author)
+				row := db.QueryRow("SELECT * FROM Users WHERE nickname = 1$;", post.Author)
 				err := row.Scan(
 					&postUser.About,
 					&postUser.Email,
@@ -547,7 +548,7 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 
 			if data == "thread" {
 				var postThread models.Thread
-				row := db.QueryRow("SELECT * FROM forum WHERE id = 1$;", post.Thread)
+				row := db.QueryRow("SELECT * FROM Threads WHERE id = 1$;", post.Thread)
 				err := row.Scan(
 					&postThread.Author,
 					&postThread.Created,
@@ -565,7 +566,7 @@ func postDetails(w http.ResponseWriter, r *http.Request) { //GET + //POST +
 			}
 			if data == "forum" {
 				var postForum models.Forum
-				row := db.QueryRow("SELECT * FROM Forum WHERE slug = 1$;", post.Forum)
+				row := db.QueryRow("SELECT * FROM Forums WHERE slug = 1$;", post.Forum)
 				err := row.Scan(
 					&postForum.Posts,
 					&postForum.Slug,
@@ -1173,7 +1174,7 @@ func threadPosts(w http.ResponseWriter, r *http.Request) { //GET - (Sort) Сло
 	return
 }
 
-func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
+func threadVote(w http.ResponseWriter, r *http.Request) { //POST ++++
 	if r.Method == http.MethodPost {
 		w.Header().Set("content-type", "application/json")
 
@@ -1223,7 +1224,22 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 			newUserVote.Nickname, returningThread.Id).Scan(&oldUserVote.Voice)
 
 		if err != nil {
+			// fmt.Println(err.Error())
 			_, err = db.Exec("INSERT INTO Votes (nickname, voice, thread) VALUES ($1, $2, $3);", newUserVote.Nickname, newUserVote.Voice, returningThread.Id)
+
+			if err != nil {
+				if err.Error() == "pq: insert or update on table \"votes\" violates foreign key constraint \"votes_nickname_fkey\"" {
+					var e models.Error
+					e.Message = "Can't find user with nickaname: " + newUserVote.Nickname
+					resData, _ := json.Marshal(e)
+
+					w.WriteHeader(http.StatusNotFound)
+					w.Write(resData)
+					return
+				}
+
+			}
+
 			err = db.QueryRow("UPDATE Threads SET votes=votes+$1 WHERE "+adds+" RETURNING *", newUserVote.Voice).
 				Scan(&returningThread.Author,
 					&returningThread.Created,
@@ -1238,6 +1254,7 @@ func threadVote(w http.ResponseWriter, r *http.Request) { //POST +/-
 				// fmt.Println(err.Error())
 				return
 			}
+
 			resData, _ := json.Marshal(returningThread)
 			w.WriteHeader(http.StatusOK)
 			w.Write(resData)
