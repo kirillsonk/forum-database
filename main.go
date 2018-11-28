@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	// "github.com/bozaro/tech-db-forum/generated/models"
-
 	models "./models"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
