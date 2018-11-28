@@ -10,24 +10,24 @@ import (
 	"strings"
 	"time"
 
-	// "github.com/kirillsonk/forum-database/models"
-	models "./models"
+	"github.com/kirillsonk/forum-database/models"
+	// models "./models"
 
 	"github.com/gorilla/mux"
-	// _ "github.com/lib/pq"
+	_ "github.com/lib/pq"
 )
 
 var db *sql.DB
 
 func init() {
 	const (
-		host     = "localhost"
-		user     = "ksonk"
-		password = "k123"
-		dbname   = "forumdb"
-		// user     = "docker"
-		// password = "docker"
-		// dbname   = "docker"
+		// host     = "localhost"
+		// user     = "ksonk"
+		// password = "k123"
+		// dbname   = "forumdb"
+		user     = "docker"
+		password = "docker"
+		dbname   = "docker"
 	)
 
 	var err error
